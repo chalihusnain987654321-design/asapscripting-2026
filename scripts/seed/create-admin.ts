@@ -1,0 +1,51 @@
+/**
+ * One-time seed script to create the first admin user.
+ * Run with: npx tsx scripts/seed/create-admin.ts
+ *
+ * Set MONGODB_URI in .env.local before running.
+ */
+import dotenv from "dotenv";
+import path from "path";
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
+import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
+import { connectDB, User } from "../../lib/mongodb";
+
+async function main() {
+  await connectDB();
+
+  const existing = await User.findOne({ role: "super-admin" });
+  if (existing) {
+    console.log("Super admin already exists:", existing.email);
+    process.exit(0);
+  }
+
+  // Upgrade existing admin@asap.com if present, otherwise create fresh
+  const existingAdmin = await User.findOne({ email: "admin@asap.com" });
+  if (existingAdmin) {
+    await User.updateOne({ email: "admin@asap.com" }, { role: "super-admin" });
+    console.log("Upgraded admin@asap.com to super-admin.");
+    process.exit(0);
+  }
+
+  const password = await bcrypt.hash("Admin@12345", 12);
+
+  const admin = await User.create({
+    name: "Admin",
+    email: "admin@asap.com",
+    password,
+    role: "super-admin",
+    isActive: true,
+  });
+
+  console.log("Super admin created:");
+  console.log("  Email:", admin.email);
+  console.log("  Password: Admin@12345  <-- change this after first login");
+
+  await mongoose.disconnect();
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

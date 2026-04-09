@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""
+Sitemap Scraper
+Accepts one or more robots.txt URLs, extracts parent sitemaps from each,
+then fetches all child sitemaps from those parents.
+"""
+import argparse
+import requests
+import xml.etree.ElementTree as ET
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+
+
+def get_sitemaps_from_robots(url):
+    print(f"[INFO] Fetching robots.txt: {url}")
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        sitemap_urls = []
+        for line in response.text.splitlines():
+            line = line.strip()
+            if line.lower().startswith("sitemap:"):
+                sitemap_url = line.split(":", 1)[1].strip()
+                sitemap_urls.append(sitemap_url)
+        print(f"[INFO] Found {len(sitemap_urls)} parent sitemap(s) in robots.txt")
+        return sitemap_urls
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch robots.txt {url}: {e}")
+        return []
+
+
+def get_child_sitemaps(url):
+    if url.endswith(".xml"):
+        return parse_xml_sitemap(url)
+    elif url.endswith(".txt"):
+        print(f"[INFO] Reading TXT sitemap index: {url}")
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=15)
+            response.raise_for_status()
+            return [line.strip() for line in response.text.splitlines() if line.strip()]
+        except Exception as e:
+            print(f"[ERROR] Failed to read TXT sitemap {url}: {e}")
+            return []
+    else:
+        # Try XML anyway
+        return parse_xml_sitemap(url)
+
+
+def parse_xml_sitemap(url):
+    print(f"[INFO] Parsing XML sitemap index: {url}")
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        root = ET.fromstring(response.content)
+        namespace = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        children = []
+        for sitemap in root.findall("ns:sitemap", namespace):
+            loc = sitemap.find("ns:loc", namespace)
+            if loc is not None:
+                children.append(loc.text.strip())
+        print(f"[INFO] Found {len(children)} child sitemap(s) in {url}")
+        return children
+    except Exception as e:
+        print(f"[ERROR] Failed to parse XML sitemap {url}: {e}")
+        return []
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Sitemap Scraper")
+    parser.add_argument("--robots_urls", required=True,
+                        help="Newline-separated robots.txt URLs")
+    parser.add_argument("--output_file", default="",
+                        help="Path to save the output TXT file")
+    args = parser.parse_args()
+
+    robots_urls = [u.strip() for u in args.robots_urls.splitlines() if u.strip()]
+    print(f"[INFO] Processing {len(robots_urls)} robots.txt URL(s)...\n")
+
+    all_sitemaps = set()
+
+    for robots_url in robots_urls:
+        parent_sitemaps = get_sitemaps_from_robots(robots_url)
+        if not parent_sitemaps:
+            print(f"[WARN] No sitemaps found in {robots_url}")
+            continue
+
+        for parent in parent_sitemaps:
+            children = get_child_sitemaps(parent)
+            if children:
+                for c in children:
+                    all_sitemaps.add(c)
+            else:
+                all_sitemaps.add(parent)
+
+    if not all_sitemaps:
+        print("[ERROR] No sitemaps found.")
+        return
+
+    sorted_sitemaps = sorted(all_sitemaps)
+    print(f"\n[INFO] Total unique sitemaps extracted: {len(sorted_sitemaps)}\n")
+    for sm in sorted_sitemaps:
+        print(sm)
+
+    if args.output_file:
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            for sm in sorted_sitemaps:
+                f.write(sm + "\n")
+        print(f"\n[DONE] Completed — {len(sorted_sitemaps)} sitemaps. File saved.")
+    else:
+        print(f"\n[DONE] Completed — {len(sorted_sitemaps)} sitemaps listed above.")
+
+
+if __name__ == "__main__":
+    main()

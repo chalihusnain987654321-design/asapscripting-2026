@@ -1,0 +1,773 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { Play, Square, RotateCcw, Plus, Trash2, Download, ChevronDown, Search, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { TerminalOutput, type RunStatus } from "@/components/terminal-output";
+import { scripts, type ScriptConfig, type ScriptInput } from "@/lib/scripts-config";
+
+interface ScriptRunnerProps {
+  slug: string;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface SiteEntry {
+  id: number;
+  label: string;
+  urls: string;
+  serviceAccount: string;
+}
+
+interface SiteRunState {
+  status: RunStatus;
+  lines: string[];
+  csvPath: string | null;
+  abortController: AbortController | null;
+}
+
+let siteIdCounter = 1;
+function newSite(defaultAccount = ""): SiteEntry {
+  return { id: siteIdCounter++, label: "", urls: "", serviceAccount: defaultAccount };
+}
+
+function defaultRunState(): SiteRunState {
+  return { status: "idle", lines: [], csvPath: null, abortController: null };
+}
+
+// ─── Main runner ──────────────────────────────────────────────────────────────
+
+export function ScriptRunner({ slug }: ScriptRunnerProps) {
+  const router = useRouter();
+  const script = scripts.find((s) => s.slug === slug) as ScriptConfig;
+
+  const isMultiSite = script.inputs.some((i) => i.type === "multi-site-urls");
+
+  // Standard script state
+  const [fieldValues, setFieldValues] = useState<Record<string, string | File>>({});
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+  const [lines, setLines] = useState<string[]>([]);
+  const [status, setStatus] = useState<RunStatus>("idle");
+  const [outputFilePath, setOutputFilePath] = useState<string | null>(null);
+
+  // Multi-site state
+  const [sites, setSites] = useState<SiteEntry[]>([newSite()]);
+  const [siteRuns, setSiteRuns] = useState<Map<number, SiteRunState>>(new Map());
+  const [accountNames, setAccountNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!script.requiresServiceAccount) return;
+    fetch("/api/settings/service-accounts")
+      .then((r) => r.json())
+      .then((names: string[]) => {
+        setAccountNames(names);
+        if (names.length === 1) {
+          setSelectedAccount(names[0]);
+          setSelectedAccounts(names);
+          setSites((prev) => prev.map((s) => ({ ...s, serviceAccount: names[0] })));
+        }
+      })
+      .catch(() => {});
+  }, [script.requiresServiceAccount]);
+
+  // ─── Site run state helpers ────────────────────────────────────────────────
+
+  function getSiteRun(id: number): SiteRunState {
+    return siteRuns.get(id) ?? defaultRunState();
+  }
+
+  function updateSiteRun(id: number, patch: Partial<SiteRunState>) {
+    setSiteRuns((prev) => {
+      const next = new Map(prev);
+      next.set(id, { ...(prev.get(id) ?? defaultRunState()), ...patch });
+      return next;
+    });
+  }
+
+  function appendSiteLine(id: number, line: string) {
+    setSiteRuns((prev) => {
+      const next = new Map(prev);
+      const cur = prev.get(id) ?? defaultRunState();
+      next.set(id, { ...cur, lines: [...cur.lines, line] });
+      return next;
+    });
+  }
+
+  // ─── SSE stream reader (per-site) ─────────────────────────────────────────
+
+  async function readSiteStream(
+    id: number,
+    response: Response,
+    signal: AbortSignal
+  ): Promise<{ exitCode: number; outputFilePath: string | null }> {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let exitCode = -1;
+    let outputFilePath: string | null = null;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (signal.aborted) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
+          if (!dataLine) continue;
+
+          let event: {
+            type: string;
+            line?: string;
+            exitCode?: number;
+            outputFilePath?: string | null;
+          };
+          try { event = JSON.parse(dataLine.slice(6)); } catch { continue; }
+
+          if (event.type === "output" && event.line) {
+            appendSiteLine(id, event.line);
+          } else if (event.type === "done") {
+            exitCode = event.exitCode ?? -1;
+            outputFilePath = event.outputFilePath ?? null;
+          }
+        }
+      }
+    } catch {
+      // stream error or abort
+    }
+
+    return { exitCode, outputFilePath };
+  }
+
+  // ─── Per-site run / stop ───────────────────────────────────────────────────
+
+  async function runSite(site: SiteEntry) {
+    const ac = new AbortController();
+    updateSiteRun(site.id, {
+      status: "running", lines: [], csvPath: null, abortController: ac,
+    });
+
+    const urlList = site.urls.split("\n").map((u) => u.trim()).filter(Boolean).join("\n");
+
+    const formData = new FormData();
+    formData.append("slug", slug);
+    formData.append("serviceAccountName", site.serviceAccount);
+    formData.append("urls", urlList);
+
+    let response: Response;
+    try {
+      response = await fetch("/api/scripts/run", {
+        method: "POST",
+        body: formData,
+        signal: ac.signal,
+      });
+    } catch (err) {
+      const isAbort = (err as Error).name === "AbortError";
+      updateSiteRun(site.id, {
+        status: isAbort ? "idle" : "error",
+        lines: isAbort ? [] : ["[ERROR] Failed to reach the server."],
+        abortController: null,
+      });
+      return;
+    }
+
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => "Unknown error");
+      updateSiteRun(site.id, {
+        status: "error",
+        lines: [`[ERROR] ${text}`],
+        abortController: null,
+      });
+      return;
+    }
+
+    const { exitCode, outputFilePath } = await readSiteStream(site.id, response, ac.signal);
+
+    updateSiteRun(site.id, {
+      status: exitCode === 0 ? "success" : "error",
+      csvPath: exitCode === 0 ? outputFilePath : null,
+      abortController: null,
+    });
+    router.refresh();
+  }
+
+  function stopSite(id: number) {
+    const run = getSiteRun(id);
+    run.abortController?.abort();
+    updateSiteRun(id, { status: "idle", abortController: null });
+  }
+
+  function resetSite(id: number) {
+    updateSiteRun(id, defaultRunState());
+  }
+
+  // ─── Site list management ──────────────────────────────────────────────────
+
+  function addSite() {
+    const defaultAccount = accountNames.length === 1 ? accountNames[0] : "";
+    setSites((prev) => [...prev, newSite(defaultAccount)]);
+  }
+
+  function removeSite(id: number) {
+    stopSite(id);
+    setSites((prev) => prev.filter((s) => s.id !== id));
+    setSiteRuns((prev) => { const next = new Map(prev); next.delete(id); return next; });
+  }
+
+  function updateSite(id: number, field: keyof Omit<SiteEntry, "id">, value: string) {
+    setSites((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+  }
+
+  // ─── Standard (non-multi-site) submit ─────────────────────────────────────
+
+  function setField(name: string, value: string | File) {
+    setFieldValues((prev) => ({ ...prev, [name]: value }));
+  }
+
+  async function handleStandardSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLines([]);
+    setStatus("running");
+    setOutputFilePath(null);
+
+    // Determine which accounts to iterate over
+    const accountsToRun = script.multiServiceAccount
+      ? selectedAccounts
+      : script.requiresServiceAccount
+      ? [selectedAccount]
+      : [""];
+
+    let allSuccess = true;
+
+    for (let i = 0; i < accountsToRun.length; i++) {
+      const account = accountsToRun[i];
+
+      // Print a separator when running multiple accounts
+      if (script.multiServiceAccount && accountsToRun.length > 1) {
+        setLines((p) => [
+          ...p,
+          `[INFO] ══════════ Account ${i + 1} of ${accountsToRun.length}: ${account} ══════════`,
+        ]);
+      }
+
+      const formData = new FormData();
+      formData.append("slug", slug);
+      if (account) formData.append("serviceAccountName", account);
+
+      for (const input of script.inputs) {
+        const value = fieldValues[input.name];
+        if (value instanceof File) {
+          formData.append(input.name, value);
+        } else if (typeof value === "string" && value.trim()) {
+          formData.append(input.name, value.trim());
+        }
+      }
+
+      let response: Response;
+      try {
+        response = await fetch("/api/scripts/run", { method: "POST", body: formData });
+      } catch {
+        setLines((p) => [...p, "[ERROR] Failed to reach the server."]);
+        allSuccess = false;
+        break;
+      }
+
+      if (!response.ok || !response.body) {
+        const text = await response.text().catch(() => "Unknown error");
+        setLines((p) => [...p, `[ERROR] ${text}`]);
+        allSuccess = false;
+        break;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let exitCode = -1;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
+          if (!dataLine) continue;
+          let event: { type: string; line?: string; exitCode?: number; outputFilePath?: string | null };
+          try { event = JSON.parse(dataLine.slice(6)); } catch { continue; }
+          if (event.type === "output" && event.line) setLines((p) => [...p, event.line!]);
+          else if (event.type === "done") {
+            exitCode = event.exitCode ?? -1;
+            if (event.outputFilePath) setOutputFilePath(event.outputFilePath);
+          }
+        }
+      }
+
+      if (exitCode !== 0) allSuccess = false;
+    }
+
+    setStatus(allSuccess ? "success" : "error");
+    router.refresh();
+  }
+
+  const isRunning = status === "running";
+  const totalUrls = isMultiSite
+    ? sites.reduce((s, site) => s + site.urls.split("\n").filter((u) => u.trim()).length, 0)
+    : 0;
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  if (isMultiSite) {
+    return (
+      <div className="space-y-4">
+        {/* Global header */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {sites.length} site{sites.length !== 1 ? "s" : ""} · {totalUrls} URL{totalUrls !== 1 ? "s" : ""} total
+          </p>
+          {accountNames.length === 0 && (
+            <p className="text-sm text-destructive">
+              No service accounts.{" "}
+              <a href="/settings" className="underline">Go to Settings</a>
+            </p>
+          )}
+        </div>
+
+        {/* Per-site cards */}
+        {sites.map((site, index) => (
+          <SiteCard
+            key={site.id}
+            site={site}
+            index={index}
+            run={getSiteRun(site.id)}
+            accountNames={accountNames}
+            canRemove={sites.length > 1}
+            onRun={() => runSite(site)}
+            onStop={() => stopSite(site.id)}
+            onReset={() => resetSite(site.id)}
+            onRemove={() => removeSite(site.id)}
+            onUpdate={(field, value) => updateSite(site.id, field, value)}
+          />
+        ))}
+
+        <Button variant="outline" className="w-full" onClick={addSite}>
+          <Plus className="h-4 w-4" />
+          Add another website
+        </Button>
+      </div>
+    );
+  }
+
+  // Standard single-script layout
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-card p-5 shadow-sm">
+          <h3 className="font-semibold mb-4">Inputs</h3>
+          <form onSubmit={handleStandardSubmit} className="space-y-4">
+            {script.requiresServiceAccount && (
+              <div className="space-y-1.5">
+                <Label>
+                  Service Account{" "}
+                  {script.multiServiceAccount
+                    ? <span className="text-muted-foreground font-normal">(select one or more)</span>
+                    : <span className="text-destructive">*</span>}
+                </Label>
+                {accountNames.length === 0 ? (
+                  <p className="text-sm text-destructive">
+                    No service accounts configured.{" "}
+                    <a href="/settings" className="underline">Go to Settings</a> to add one.
+                  </p>
+                ) : script.multiServiceAccount ? (
+                  <MultiAccountSelector
+                    accountNames={accountNames}
+                    selected={selectedAccounts}
+                    onChange={setSelectedAccounts}
+                    disabled={isRunning}
+                  />
+                ) : (
+                  <select
+                    id="serviceAccountName"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    value={selectedAccount}
+                    onChange={(e) => setSelectedAccount(e.target.value)}
+                    required
+                    disabled={isRunning}
+                  >
+                    {accountNames.length > 1 && (
+                      <option value="">— Select a service account —</option>
+                    )}
+                    {accountNames.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {script.inputs.map((input) => (
+              <ScriptField
+                key={input.name}
+                input={input}
+                value={fieldValues[input.name] ?? ""}
+                onChange={(v) => setField(input.name, v)}
+                disabled={isRunning}
+              />
+            ))}
+
+            <div className="flex gap-2 pt-2">
+              <Button type="submit"
+                disabled={
+                  isRunning ||
+                  (script.multiServiceAccount && selectedAccounts.length === 0) ||
+                  (!script.multiServiceAccount && script.requiresServiceAccount && !selectedAccount)
+                }
+                className="flex-1">
+                <Play className="h-4 w-4" />
+                {isRunning ? "Running…" : "Run script"}
+              </Button>
+              {status !== "idle" && (
+                <Button type="button" variant="outline"
+                  onClick={() => { setLines([]); setStatus("idle"); setOutputFilePath(null); }} disabled={isRunning}>
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            {status === "success" && outputFilePath && (
+              <a
+                href={`/api/logs/download?path=${encodeURIComponent(outputFilePath)}`}
+                download
+                className="flex items-center justify-center gap-2 w-full h-9 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download {outputFilePath.endsWith(".txt") ? "TXT" : "CSV"}
+              </a>
+            )}
+          </form>
+        </div>
+      </div>
+      <div>
+        <TerminalOutput lines={lines} status={status} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Per-site card ─────────────────────────────────────────────────────────────
+
+interface SiteCardProps {
+  site: SiteEntry;
+  index: number;
+  run: SiteRunState;
+  accountNames: string[];
+  canRemove: boolean;
+  onRun: () => void;
+  onStop: () => void;
+  onReset: () => void;
+  onRemove: () => void;
+  onUpdate: (field: keyof Omit<SiteEntry, "id">, value: string) => void;
+}
+
+function SiteCard({
+  site, index, run, accountNames, canRemove,
+  onRun, onStop, onReset, onRemove, onUpdate,
+}: SiteCardProps) {
+  const urlCount = site.urls.split("\n").filter((u) => u.trim()).length;
+  const isRunning = run.status === "running";
+  const noAccounts = accountNames.length === 0;
+
+  const canRun =
+    !isRunning &&
+    !noAccounts &&
+    !!site.serviceAccount &&
+    urlCount > 0;
+
+  return (
+    <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+      {/* Card header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30">
+        <span className="text-sm font-semibold text-muted-foreground w-6 shrink-0">
+          {index + 1}.
+        </span>
+        <Input
+          placeholder="Website name (e.g. Aviation Axis)"
+          value={site.label}
+          onChange={(e) => onUpdate("label", e.target.value)}
+          disabled={isRunning}
+          className="h-8 text-sm flex-1"
+        />
+        {urlCount > 0 && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+            {urlCount}/200 URLs
+          </span>
+        )}
+        {canRemove && (
+          <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0"
+            onClick={onRemove} disabled={isRunning}>
+            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
+        )}
+      </div>
+
+      {/* Two-column body: inputs left, terminal right */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x">
+        {/* Left — inputs */}
+        <div className="px-4 py-3 space-y-3">
+          {/* Service account selector */}
+          <div className="space-y-1">
+            <Label className="text-xs">Service Account <span className="text-destructive">*</span></Label>
+            {noAccounts ? (
+              <p className="text-xs text-destructive">
+                No accounts. <a href="/settings" className="underline">Go to Settings</a>
+              </p>
+            ) : (
+              <select
+                className="h-8 w-full rounded-md border border-input bg-background px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                value={site.serviceAccount}
+                onChange={(e) => onUpdate("serviceAccount", e.target.value)}
+                disabled={isRunning}
+                required
+              >
+                {accountNames.length > 1 && (
+                  <option value="">— Select service account —</option>
+                )}
+                {accountNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* URLs textarea */}
+          <div className="space-y-1">
+            <Label className="text-xs">URLs <span className="text-destructive">*</span></Label>
+            <textarea
+              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+              rows={6}
+              placeholder={"https://example.com/page-1\nhttps://example.com/page-2\n..."}
+              value={site.urls}
+              onChange={(e) => onUpdate("urls", e.target.value)}
+              disabled={isRunning}
+            />
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            {!isRunning ? (
+              <Button size="sm" onClick={onRun} disabled={!canRun} className="flex-1">
+                <Play className="h-3.5 w-3.5" />
+                Run
+              </Button>
+            ) : (
+              <Button size="sm" variant="destructive" onClick={onStop} className="flex-1">
+                <Square className="h-3.5 w-3.5" />
+                Stop
+              </Button>
+            )}
+            {run.status !== "idle" && !isRunning && (
+              <Button size="sm" variant="outline" onClick={onReset}>
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {run.status === "success" && run.csvPath && (
+              <a
+                href={`/api/logs/download?path=${encodeURIComponent(run.csvPath)}`}
+                download
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download CSV
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Right — terminal (always visible) */}
+        <div className="px-4 py-3">
+          <TerminalOutput lines={run.lines} status={run.status} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Multi-account selector ───────────────────────────────────────────────────
+
+interface MultiAccountSelectorProps {
+  accountNames: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+  disabled: boolean;
+}
+
+function MultiAccountSelector({ accountNames, selected, onChange, disabled }: MultiAccountSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = accountNames.filter((n) =>
+    n.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const allSelected = selected.length === accountNames.length;
+  const noneSelected = selected.length === 0;
+
+  function toggleAccount(name: string) {
+    onChange(
+      selected.includes(name)
+        ? selected.filter((n) => n !== name)
+        : [...selected, name]
+    );
+  }
+
+  function toggleAll() {
+    onChange(allSelected ? [] : [...accountNames]);
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const label = noneSelected
+    ? "— Select service accounts —"
+    : allSelected
+    ? `All ${accountNames.length} accounts selected`
+    : `${selected.length} of ${accountNames.length} selected`;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        className="h-10 w-full flex items-center justify-between rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+      >
+        <span className={noneSelected ? "text-muted-foreground" : ""}>{label}</span>
+        <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+          {/* Search */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b">
+            <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <input
+              autoFocus
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              placeholder="Search accounts…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Select all row */}
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent border-b"
+            onClick={toggleAll}
+          >
+            <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${allSelected ? "bg-primary border-primary" : "border-input"}`}>
+              {allSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+            </div>
+            <span className="font-medium">{allSelected ? "Deselect All" : "Select All"}</span>
+            <span className="ml-auto text-xs text-muted-foreground">{accountNames.length} total</span>
+          </button>
+
+          {/* Account list */}
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">No accounts match.</p>
+            ) : (
+              filtered.map((name) => {
+                const checked = selected.includes(name);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent text-left"
+                    onClick={() => toggleAccount(name)}
+                  >
+                    <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${checked ? "bg-primary border-primary" : "border-input"}`}>
+                      {checked && <Check className="h-3 w-3 text-primary-foreground" />}
+                    </div>
+                    <span className="truncate">{name}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Standard field renderer ──────────────────────────────────────────────────
+
+interface ScriptFieldProps {
+  input: ScriptInput;
+  value: string | File;
+  onChange: (v: string | File) => void;
+  disabled: boolean;
+}
+
+function ScriptField({ input, value, onChange, disabled }: ScriptFieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={input.name}>
+        {input.label}
+        {input.required && <span className="text-destructive ml-1">*</span>}
+      </Label>
+
+      {input.type === "textarea" ? (
+        <textarea
+          id={input.name}
+          className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono resize-y"
+          placeholder={input.placeholder}
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          required={input.required}
+        />
+      ) : input.type === "file" ? (
+        <Input
+          id={input.name}
+          type="file"
+          accept={input.accept}
+          onChange={(e) => onChange(e.target.files?.[0] ?? "")}
+          disabled={disabled}
+          required={input.required}
+        />
+      ) : (
+        <Input
+          id={input.name}
+          type={input.type}
+          placeholder={input.placeholder}
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          required={input.required}
+        />
+      )}
+
+      {input.description && (
+        <p className="text-xs text-muted-foreground">{input.description}</p>
+      )}
+    </div>
+  );
+}

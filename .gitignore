@@ -34,3 +34,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# service account credentials
+scripts/python/ga4_sa.json
+
+.vercel
