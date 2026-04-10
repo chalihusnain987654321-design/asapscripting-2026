@@ -114,7 +114,12 @@ def parse_xml_sitemap(url):
     try:
         response = session.get(url, timeout=15)
         response.raise_for_status()
-        root = ET.fromstring(response.content)
+        # Detect Cloudflare HTML challenge instead of XML
+        content = response.content
+        if content.strip().startswith(b"<!DOCTYPE") or content.strip().startswith(b"<html"):
+            print(f"[ERROR] {url} is returning an HTML page (bot protection). Whitelist your server IP in Cloudflare.")
+            return []
+        root = ET.fromstring(content)
         namespace = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
         children = []
         for sitemap in root.findall("ns:sitemap", namespace):
