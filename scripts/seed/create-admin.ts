@@ -20,19 +20,11 @@ async function main() {
     process.exit(0);
   }
 
-  // Upgrade existing admin@asap.com if present, otherwise create fresh
-  const existingAdmin = await User.findOne({ email: "admin@asap.com" });
-  if (existingAdmin) {
-    await User.updateOne({ email: "admin@asap.com" }, { role: "super-admin" });
-    console.log("Upgraded admin@asap.com to super-admin.");
-    process.exit(0);
-  }
-
-  const password = await bcrypt.hash("Admin@12345", 12);
+  const password = await bcrypt.hash("husnain@12345", 12);
 
   const admin = await User.create({
-    name: "Admin",
-    email: "admin@asap.com",
+    name: "Ali Husnain",
+    email: "ali.husnain@corp.tkxel.com",
     password,
     role: "super-admin",
     isActive: true,
@@ -40,7 +32,7 @@ async function main() {
 
   console.log("Super admin created:");
   console.log("  Email:", admin.email);
-  console.log("  Password: Admin@12345  <-- change this after first login");
+  console.log("  Password: husnain@12345");
 
   await mongoose.disconnect();
 }
