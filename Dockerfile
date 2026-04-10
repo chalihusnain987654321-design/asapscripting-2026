@@ -12,7 +12,8 @@ RUN pip3 install --break-system-packages \
     google-auth \
     pandas \
     oauth2client \
-    lxml
+    lxml \
+    google-api-python-client
 
 WORKDIR /app
 
