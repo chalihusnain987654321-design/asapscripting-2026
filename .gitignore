@@ -39,3 +39,5 @@ next-env.d.ts
 scripts/python/ga4_sa.json
 
 .vercel
+# service account credentials
+scripts/python/ga4_sa.json
