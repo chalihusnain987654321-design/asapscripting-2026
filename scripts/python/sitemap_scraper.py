@@ -17,8 +17,23 @@ HEADERS = {
 }
 
 
+COMMON_SITEMAP_PATHS = [
+    "/sitemap.xml",
+    "/sitemap_index.xml",
+    "/sitemap-index.xml",
+    "/sitemaps/sitemap.xml",
+    "/sitemap/sitemap.xml",
+]
+
+
 def get_sitemaps_from_robots(url):
     print(f"[INFO] Fetching robots.txt: {url}")
+
+    # Derive base URL from robots.txt URL
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
         response.raise_for_status()
@@ -28,8 +43,29 @@ def get_sitemaps_from_robots(url):
             if line.lower().startswith("sitemap:"):
                 sitemap_url = line.split(":", 1)[1].strip()
                 sitemap_urls.append(sitemap_url)
-        print(f"[INFO] Found {len(sitemap_urls)} parent sitemap(s) in robots.txt")
+
+        if sitemap_urls:
+            print(f"[INFO] Found {len(sitemap_urls)} parent sitemap(s) in robots.txt")
+            return sitemap_urls
+
+        # No sitemaps in robots.txt — try common paths
+        print(f"[WARN] No Sitemap: directive found in robots.txt. Trying common sitemap paths...")
+        for path in COMMON_SITEMAP_PATHS:
+            candidate = base_url + path
+            try:
+                r = requests.get(candidate, headers=HEADERS, timeout=10)
+                if r.status_code == 200:
+                    print(f"[INFO] Found sitemap at: {candidate}")
+                    sitemap_urls.append(candidate)
+                    break
+            except Exception:
+                continue
+
+        if not sitemap_urls:
+            print(f"[WARN] No sitemaps found via robots.txt or common paths for {base_url}")
+
         return sitemap_urls
+
     except Exception as e:
         print(f"[ERROR] Failed to fetch robots.txt {url}: {e}")
         return []
