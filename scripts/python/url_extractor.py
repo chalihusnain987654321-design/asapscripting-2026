@@ -4,30 +4,36 @@ URL Extractor
 Extracts all page URLs from a sitemap and saves them to a CSV file.
 """
 import argparse
-import requests
 import xml.etree.ElementTree as ET
 import csv
 import re
 import os
 import sys
 
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-}
+try:
+    import cloudscraper
+    session = cloudscraper.create_scraper()
+except ImportError:
+    import requests
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+    })
 
 
 def extract_urls(sitemap_url):
-    response = requests.get(sitemap_url, headers=HEADERS, timeout=30)
+    response = session.get(sitemap_url, timeout=30)
+    content = response.content
+    if content.strip().startswith(b"<!DOCTYPE") or content.strip().startswith(b"<html"):
+        print(f"[ERROR] {sitemap_url} is returning an HTML page (Cloudflare bot protection). Whitelist your server IP in Cloudflare.")
+        sys.exit(1)
     if response.status_code != 200:
         print(f"[ERROR] Failed to fetch sitemap (HTTP {response.status_code}): {sitemap_url}")
         sys.exit(1)
