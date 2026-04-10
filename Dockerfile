@@ -6,6 +6,7 @@ RUN apk add --no-cache python3 py3-pip gcc musl-dev python3-dev
 # Install Python packages
 RUN pip3 install --break-system-packages \
     requests \
+    cloudscraper \
     google-analytics-data \
     gspread \
     google-auth \

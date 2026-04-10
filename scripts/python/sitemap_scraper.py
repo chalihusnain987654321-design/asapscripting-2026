@@ -5,21 +5,24 @@ Accepts one or more robots.txt URLs, extracts parent sitemaps from each,
 then fetches all child sitemaps from those parents.
 """
 import argparse
-import requests
 import xml.etree.ElementTree as ET
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-}
+try:
+    import cloudscraper
+    session = cloudscraper.create_scraper()
+except ImportError:
+    import requests
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+    })
 
 
 COMMON_SITEMAP_PATHS = [
@@ -45,7 +48,7 @@ def get_sitemaps_from_robots(url):
     base_url = f"{parsed.scheme}://{parsed.netloc}"
 
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
+        response = session.get(url, timeout=15)
         response.raise_for_status()
         sitemap_urls = []
         for line in response.text.splitlines():
@@ -69,7 +72,7 @@ def get_sitemaps_from_robots(url):
         for path in COMMON_SITEMAP_PATHS:
             candidate = base_url + path
             try:
-                r = requests.get(candidate, headers=HEADERS, timeout=10)
+                r = session.get(candidate, timeout=10)
                 if r.status_code == 200 and ("xml" in r.headers.get("Content-Type", "") or r.text.strip().startswith("<")):
                     print(f"[INFO] Found sitemap at: {candidate}")
                     sitemap_urls.append(candidate)
@@ -95,7 +98,7 @@ def get_child_sitemaps(url):
     elif url.endswith(".txt"):
         print(f"[INFO] Reading TXT sitemap index: {url}")
         try:
-            response = requests.get(url, headers=HEADERS, timeout=15)
+            response = session.get(url, timeout=15)
             response.raise_for_status()
             return [line.strip() for line in response.text.splitlines() if line.strip()]
         except Exception as e:
@@ -109,7 +112,7 @@ def get_child_sitemaps(url):
 def parse_xml_sitemap(url):
     print(f"[INFO] Parsing XML sitemap index: {url}")
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
+        response = session.get(url, timeout=15)
         response.raise_for_status()
         root = ET.fromstring(response.content)
         namespace = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
