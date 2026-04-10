@@ -89,7 +89,7 @@ export function Sidebar() {
             {session?.user?.name?.[0] ?? "?"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="truncate text-sm font-medium text-gray-100">
+            <p className="text-sm font-medium text-gray-100">
               {session?.user?.name}
             </p>
             <div className="flex items-center gap-1">
