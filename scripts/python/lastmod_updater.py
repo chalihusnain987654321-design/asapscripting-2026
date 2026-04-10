@@ -17,31 +17,49 @@ OUTPUT_FOLDER = "updated"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Sitemap Lastmod Updater)"}
 
 
-def update_lastmod(url):
-    print(f"[INFO] Processing: {url}")
-
+def fetch_xml(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=20, verify=False)
         if r.status_code != 200:
             print(f"[ERROR] HTTP {r.status_code}: {url}")
-            return
+            return None
+        return r.content
     except Exception as e:
-        print(f"[ERROR] Request failed: {e}")
+        print(f"[ERROR] Request failed for {url}: {e}")
+        return None
+
+
+def update_lastmod(url, today=None):
+    if today is None:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    print(f"[INFO] Processing: {url}")
+    content = fetch_xml(url)
+    if content is None:
         return
 
     try:
         parser = etree.XMLParser(remove_blank_text=True)
-        root = etree.fromstring(r.content, parser)
+        root = etree.fromstring(content, parser)
     except Exception as e:
         print(f"[ERROR] Invalid XML at {url}: {e}")
         return
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     url_nodes = root.findall("sm:url", ns)
+    sitemap_nodes = root.findall("sm:sitemap", ns)
+
+    # Sitemap index — recurse into children
+    if not url_nodes and sitemap_nodes:
+        print(f"[INFO] Sitemap index detected — processing {len(sitemap_nodes)} child sitemap(s)...")
+        for sitemap_node in sitemap_nodes:
+            loc = sitemap_node.find("sm:loc", ns)
+            if loc is not None and loc.text:
+                update_lastmod(loc.text.strip(), today)
+        return
 
     if not url_nodes:
-        print(f"[WARN] No <url> tags found (may be a sitemap index): {url}")
+        print(f"[WARN] No <url> or <sitemap> tags found: {url}")
         return
 
     for url_node in url_nodes:
