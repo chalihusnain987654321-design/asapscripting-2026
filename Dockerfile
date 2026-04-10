@@ -11,7 +11,8 @@ RUN pip3 install --break-system-packages \
     gspread \
     google-auth \
     pandas \
-    oauth2client
+    oauth2client \
+    lxml
 
 WORKDIR /app
 
