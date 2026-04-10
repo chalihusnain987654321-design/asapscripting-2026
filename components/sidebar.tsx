@@ -51,7 +51,7 @@ export function Sidebar() {
   const visibleItems = navItems.filter((item) => myRank >= minRoleRank(item.minRole));
 
   return (
-    <aside className="flex h-screen w-60 flex-col bg-gray-900 text-gray-100">
+    <aside className="flex h-screen w-64 flex-col bg-gray-900 text-gray-100">
       {/* Brand */}
       <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-700">
         <Globe className="h-6 w-6 text-blue-400" />
