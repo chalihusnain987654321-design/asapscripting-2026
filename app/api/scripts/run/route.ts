@@ -124,7 +124,9 @@ export async function POST(req: Request) {
       let outputBuffer = "";
       const startTime = Date.now();
 
-      const proc = spawn(pythonBin, spawnArgs);
+      const proc = spawn(pythonBin, spawnArgs, {
+        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      });
 
       const handleOutput = (chunk: Buffer) => {
         const text = chunk.toString();
