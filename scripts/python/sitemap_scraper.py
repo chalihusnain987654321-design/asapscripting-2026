@@ -21,8 +21,13 @@ COMMON_SITEMAP_PATHS = [
     "/sitemap.xml",
     "/sitemap_index.xml",
     "/sitemap-index.xml",
-    "/sitemaps/sitemap.xml",
     "/sitemap/sitemap.xml",
+    "/sitemaps/sitemap.xml",
+    "/sitemap/index.xml",
+    "/wp-sitemap.xml",
+    "/news-sitemap.xml",
+    "/product-sitemap.xml",
+    "/page-sitemap.xml",
 ]
 
 
@@ -48,18 +53,26 @@ def get_sitemaps_from_robots(url):
             print(f"[INFO] Found {len(sitemap_urls)} parent sitemap(s) in robots.txt")
             return sitemap_urls
 
-        # No sitemaps in robots.txt — try common paths
-        print(f"[WARN] No Sitemap: directive found in robots.txt. Trying common sitemap paths...")
+        # No sitemaps in robots.txt — print content for debugging
+        print(f"[WARN] No Sitemap: directive found in robots.txt. Content preview:")
+        for line in response.text.splitlines()[:10]:
+            if line.strip():
+                print(f"       {line.strip()}")
+
+        # Try common paths
+        print(f"[INFO] Trying common sitemap paths on {base_url}...")
         for path in COMMON_SITEMAP_PATHS:
             candidate = base_url + path
             try:
                 r = requests.get(candidate, headers=HEADERS, timeout=10)
-                if r.status_code == 200:
+                if r.status_code == 200 and ("xml" in r.headers.get("Content-Type", "") or r.text.strip().startswith("<")):
                     print(f"[INFO] Found sitemap at: {candidate}")
                     sitemap_urls.append(candidate)
                     break
-            except Exception:
-                continue
+                else:
+                    print(f"[INFO] {candidate} → {r.status_code}")
+            except Exception as e:
+                print(f"[INFO] {candidate} → error: {e}")
 
         if not sitemap_urls:
             print(f"[WARN] No sitemaps found via robots.txt or common paths for {base_url}")
