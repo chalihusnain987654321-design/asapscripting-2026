@@ -132,18 +132,25 @@ def main():
     parser = argparse.ArgumentParser(description="Sitemap Scraper")
     parser.add_argument("--robots_urls", required=True,
                         help="Newline-separated robots.txt URLs")
+    parser.add_argument("--fallback_sitemaps", default="",
+                        help="Newline-separated sitemap URLs to use if robots.txt is blocked")
     parser.add_argument("--output_file", default="",
                         help="Path to save the output TXT file")
     args = parser.parse_args()
 
     robots_urls = [u.strip() for u in args.robots_urls.splitlines() if u.strip()]
+    fallback_urls = [u.strip() for u in args.fallback_sitemaps.splitlines() if u.strip()] if args.fallback_sitemaps else []
+
     print(f"[INFO] Processing {len(robots_urls)} robots.txt URL(s)...\n")
 
     all_sitemaps = set()
 
     for robots_url in robots_urls:
         parent_sitemaps = get_sitemaps_from_robots(robots_url)
-        if not parent_sitemaps:
+        if not parent_sitemaps and fallback_urls:
+            print(f"[INFO] robots.txt blocked — using fallback sitemap URLs provided.")
+            parent_sitemaps = fallback_urls
+        elif not parent_sitemaps:
             print(f"[WARN] No sitemaps found in {robots_url}")
             continue
 
