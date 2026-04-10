@@ -56,14 +56,6 @@ export const scripts: ScriptConfig[] = [
         description: "Enter the robots.txt URL of the website.",
         required: true,
       },
-      {
-        name: "fallback_sitemaps",
-        label: "Fallback Sitemap URLs (optional)",
-        type: "textarea",
-        placeholder: "https://example.com/sitemap.xml\nhttps://example.com/sitemap-index.xml",
-        description: "If robots.txt is blocked, paste sitemap URLs here directly (one per line).",
-        required: false,
-      },
     ],
   },
   {
