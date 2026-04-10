@@ -88,7 +88,7 @@ export function Sidebar() {
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-bold uppercase">
             {session?.user?.name?.[0] ?? "?"}
           </div>
-          <div className="min-w-0">
+          <div className="flex-1 min-w-0">
             <p className="truncate text-sm font-medium text-gray-100">
               {session?.user?.name}
             </p>
