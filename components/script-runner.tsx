@@ -598,7 +598,9 @@ function SingleAccountSelector({
 }: SingleAccountSelectorProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isSmall = size === "sm";
 
@@ -606,9 +608,18 @@ function SingleAccountSelector({
     n.toLowerCase().includes(search.toLowerCase())
   );
 
+  function handleOpen() {
+    if (buttonRef.current) setAnchorRect(buttonRef.current.getBoundingClientRect());
+    setOpen((o) => !o);
+  }
+
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (
+        buttonRef.current && !buttonRef.current.contains(t) &&
+        dropdownRef.current && !dropdownRef.current.contains(t)
+      ) {
         setOpen(false);
         setSearch("");
       }
@@ -624,11 +635,12 @@ function SingleAccountSelector({
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
         className={`${isSmall ? "h-8 text-xs" : "h-10 text-sm"} w-full flex items-center justify-between rounded-md border border-input bg-background px-3 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleOpen}
         disabled={disabled}
       >
         <span className={!selected ? "text-muted-foreground" : ""}>
@@ -637,8 +649,18 @@ function SingleAccountSelector({
         <ChevronDown className={`${isSmall ? "h-3.5 w-3.5" : "h-4 w-4"} text-muted-foreground shrink-0`} />
       </button>
 
-      {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+      {open && anchorRect && (
+        <div
+          ref={dropdownRef}
+          style={{
+            position: "fixed",
+            top: anchorRect.bottom + 4,
+            left: anchorRect.left,
+            width: anchorRect.width,
+            zIndex: 9999,
+          }}
+          className="rounded-md border bg-popover shadow-md"
+        >
           <div className="flex items-center gap-2 px-3 py-2 border-b">
             <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <input
