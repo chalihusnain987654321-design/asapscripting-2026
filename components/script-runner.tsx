@@ -394,21 +394,12 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
                     disabled={isRunning}
                   />
                 ) : (
-                  <select
-                    id="serviceAccountName"
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                    value={selectedAccount}
-                    onChange={(e) => setSelectedAccount(e.target.value)}
-                    required
+                  <SingleAccountSelector
+                    accountNames={accountNames}
+                    selected={selectedAccount}
+                    onChange={setSelectedAccount}
                     disabled={isRunning}
-                  >
-                    {accountNames.length > 1 && (
-                      <option value="">— Select a service account —</option>
-                    )}
-                    {accountNames.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
+                  />
                 )}
               </div>
             )}
@@ -529,20 +520,13 @@ function SiteCard({
                 No accounts. <a href="/settings" className="underline">Go to Settings</a>
               </p>
             ) : (
-              <select
-                className="h-8 w-full rounded-md border border-input bg-background px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                value={site.serviceAccount}
-                onChange={(e) => onUpdate("serviceAccount", e.target.value)}
+              <SingleAccountSelector
+                accountNames={accountNames}
+                selected={site.serviceAccount}
+                onChange={(v) => onUpdate("serviceAccount", v)}
                 disabled={isRunning}
-                required
-              >
-                {accountNames.length > 1 && (
-                  <option value="">— Select service account —</option>
-                )}
-                {accountNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+                size="sm"
+              />
             )}
           </div>
 
@@ -595,6 +579,97 @@ function SiteCard({
           <TerminalOutput lines={run.lines} status={run.status} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Single-account selector (with search) ───────────────────────────────────
+
+interface SingleAccountSelectorProps {
+  accountNames: string[];
+  selected: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+  size?: "default" | "sm";
+}
+
+function SingleAccountSelector({
+  accountNames, selected, onChange, disabled, size = "default",
+}: SingleAccountSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const isSmall = size === "sm";
+
+  const filtered = accountNames.filter((n) =>
+    n.toLowerCase().includes(search.toLowerCase())
+  );
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  function handleSelect(name: string) {
+    onChange(name);
+    setOpen(false);
+    setSearch("");
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        className={`${isSmall ? "h-8 text-xs" : "h-10 text-sm"} w-full flex items-center justify-between rounded-md border border-input bg-background px-3 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+      >
+        <span className={!selected ? "text-muted-foreground" : ""}>
+          {selected || "— Select a service account —"}
+        </span>
+        <ChevronDown className={`${isSmall ? "h-3.5 w-3.5" : "h-4 w-4"} text-muted-foreground shrink-0`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+          <div className="flex items-center gap-2 px-3 py-2 border-b">
+            <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <input
+              autoFocus
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              placeholder="Search accounts…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">No accounts match.</p>
+            ) : (
+              filtered.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent text-left"
+                  onClick={() => handleSelect(name)}
+                >
+                  <div className={`h-4 w-4 rounded-full border flex items-center justify-center shrink-0 ${selected === name ? "bg-primary border-primary" : "border-input"}`}>
+                    {selected === name && <div className="h-2 w-2 rounded-full bg-primary-foreground" />}
+                  </div>
+                  <span className="truncate">{name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
