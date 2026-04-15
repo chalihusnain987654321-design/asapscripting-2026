@@ -213,7 +213,7 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
 
   function addSite() {
     const defaultAccount = accountNames.length === 1 ? accountNames[0] : "";
-    setSites((prev) => [...prev, newSite(defaultAccount)]);
+    setSites((prev) => [newSite(defaultAccount), ...prev]);
   }
 
   function removeSite(id: number) {
@@ -329,15 +329,20 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
     return (
       <div className="space-y-4">
         {/* Global header */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground shrink-0">
             {sites.length} site{sites.length !== 1 ? "s" : ""} · {totalUrls} URL{totalUrls !== 1 ? "s" : ""} total
           </p>
-          {accountNames.length === 0 && (
+          {accountNames.length === 0 ? (
             <p className="text-sm text-destructive">
               No service accounts.{" "}
               <a href="/settings" className="underline">Go to Settings</a>
             </p>
+          ) : (
+            <Button variant="outline" size="sm" onClick={addSite}>
+              <Plus className="h-4 w-4" />
+              Add another website
+            </Button>
           )}
         </div>
 
@@ -357,11 +362,6 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
             onUpdate={(field, value) => updateSite(site.id, field, value)}
           />
         ))}
-
-        <Button variant="outline" className="w-full" onClick={addSite}>
-          <Plus className="h-4 w-4" />
-          Add another website
-        </Button>
       </div>
     );
   }
