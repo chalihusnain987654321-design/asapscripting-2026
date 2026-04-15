@@ -238,6 +238,42 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
     setStatus("running");
     setOutputFilePath(null);
 
+    // Pre-process folder inputs client-side (parse XML → JSON) to avoid
+    // large file uploads that exceed Cloudflare's 100 MB limit.
+    const parsedFolderData: Record<string, Blob> = {};
+    for (const input of script.inputs) {
+      if (!input.folder) continue;
+      const files = fieldValues[input.name];
+      if (!(files instanceof FileList) || files.length === 0) continue;
+
+      setLines((p) => [...p, `[INFO] Parsing ${files.length} XML files in browser...`]);
+      const results: { name: string; urls: string[] }[] = [];
+
+      for (let fi = 0; fi < files.length; fi++) {
+        const file = files[fi];
+        const basename = file.name.split(/[/\\]/).pop() || file.name;
+        try {
+          const text = await file.text();
+          const doc = new DOMParser().parseFromString(text, "text/xml");
+          const locs = Array.from(doc.getElementsByTagNameNS("*", "loc"))
+            .map((el) => (el.textContent || "").trim())
+            .filter(Boolean);
+          results.push({ name: basename, urls: locs });
+        } catch {
+          results.push({ name: basename, urls: [] });
+        }
+        if ((fi + 1) % 100 === 0 || fi + 1 === files.length) {
+          setLines((p) => [...p, `[INFO] Parsed ${fi + 1}/${files.length} files...`]);
+        }
+      }
+
+      parsedFolderData[input.name] = new Blob(
+        [JSON.stringify(results)],
+        { type: "application/json" }
+      );
+      setLines((p) => [...p, `[INFO] Uploading to server...`]);
+    }
+
     // Determine which accounts to iterate over
     const accountsToRun = script.multiServiceAccount
       ? selectedAccounts
@@ -264,7 +300,9 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
 
       for (const input of script.inputs) {
         const value = fieldValues[input.name];
-        if (value instanceof FileList) {
+        if (input.folder && parsedFolderData[input.name]) {
+          formData.append(input.name, parsedFolderData[input.name], "sitemap_data.json");
+        } else if (value instanceof FileList) {
           for (const file of Array.from(value)) formData.append(input.name, file);
         } else if (value instanceof File) {
           formData.append(input.name, value);
