@@ -47,7 +47,7 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
   const isMultiSite = script.inputs.some((i) => i.type === "multi-site-urls");
 
   // Standard script state
-  const [fieldValues, setFieldValues] = useState<Record<string, string | File>>({});
+  const [fieldValues, setFieldValues] = useState<Record<string, string | File | FileList>>({});
   const [selectedAccount, setSelectedAccount] = useState("");
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [lines, setLines] = useState<string[]>([]);
@@ -228,7 +228,7 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
 
   // ─── Standard (non-multi-site) submit ─────────────────────────────────────
 
-  function setField(name: string, value: string | File) {
+  function setField(name: string, value: string | File | FileList) {
     setFieldValues((prev) => ({ ...prev, [name]: value }));
   }
 
@@ -264,7 +264,9 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
 
       for (const input of script.inputs) {
         const value = fieldValues[input.name];
-        if (value instanceof File) {
+        if (value instanceof FileList) {
+          for (const file of Array.from(value)) formData.append(input.name, file);
+        } else if (value instanceof File) {
           formData.append(input.name, value);
         } else if (typeof value === "string" && value.trim()) {
           formData.append(input.name, value.trim());
@@ -818,8 +820,8 @@ function MultiAccountSelector({ accountNames, selected, onChange, disabled }: Mu
 
 interface ScriptFieldProps {
   input: ScriptInput;
-  value: string | File;
-  onChange: (v: string | File) => void;
+  value: string | File | FileList;
+  onChange: (v: string | File | FileList) => void;
   disabled: boolean;
 }
 
@@ -842,14 +844,27 @@ function ScriptField({ input, value, onChange, disabled }: ScriptFieldProps) {
           required={input.required}
         />
       ) : input.type === "file" ? (
-        <Input
-          id={input.name}
-          type="file"
-          accept={input.accept}
-          onChange={(e) => onChange(e.target.files?.[0] ?? "")}
-          disabled={disabled}
-          required={input.required}
-        />
+        <div className="space-y-1">
+          <input
+            id={input.name}
+            type="file"
+            accept={input.accept}
+            {...(input.folder ? { webkitdirectory: "", multiple: true } as React.InputHTMLAttributes<HTMLInputElement> : {})}
+            onChange={(e) => onChange(
+              input.folder
+                ? (e.target.files ?? "")
+                : (e.target.files?.[0] ?? "")
+            )}
+            disabled={disabled}
+            required={input.required}
+            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          {input.folder && value instanceof FileList && value.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {value.length} file{value.length !== 1 ? "s" : ""} selected
+            </p>
+          )}
+        </div>
       ) : (
         <Input
           id={input.name}

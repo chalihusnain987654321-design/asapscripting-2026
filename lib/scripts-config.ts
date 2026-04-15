@@ -22,6 +22,7 @@ export interface ScriptInput {
   required: boolean;
   options?: { label: string; value: string }[];
   accept?: string;
+  folder?: boolean; // enables folder/multi-file upload (webkitdirectory)
 }
 
 export interface ScriptConfig {
@@ -210,11 +211,12 @@ export const scripts: ScriptConfig[] = [
     outputLabel: "ZIP with clean sitemaps + duplicates CSV",
     inputs: [
       {
-        name: "zip_file",
-        label: "Sitemaps ZIP",
+        name: "sitemap_files",
+        label: "Sitemaps Folder",
         type: "file",
-        accept: ".zip",
-        description: "Upload a ZIP file containing all your XML sitemap files.",
+        accept: ".xml",
+        folder: true,
+        description: "Select the folder containing your XML sitemap files.",
         required: true,
       },
     ],

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Duplicate Sitemap Remover
-Accepts a ZIP of XML sitemaps, removes duplicate URLs (first occurrence wins),
+Accepts a directory of XML sitemaps, removes duplicate URLs (first occurrence wins),
 and outputs a ZIP containing clean sitemaps + a duplicates report CSV.
 """
 import argparse
@@ -31,77 +31,76 @@ def normalize_url(url):
         return url.strip()
 
 
-def parse_sitemap_bytes(data: bytes, filename: str):
+def parse_sitemap_file(file_path: str):
     urls = []
     try:
-        for _, elem in ET.iterparse(io.BytesIO(data), events=("end",)):
+        for _, elem in ET.iterparse(file_path, events=("end",)):
             if elem.tag.endswith("loc") and elem.text:
                 urls.append(normalize_url(elem.text))
             elem.clear()
     except Exception as e:
-        print(f"[WARN] Error parsing {filename}: {e}", flush=True)
+        print(f"[WARN] Error parsing {os.path.basename(file_path)}: {e}", flush=True)
     return urls
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--zip_file", required=True, help="Path to input ZIP of XML sitemaps")
+    parser.add_argument("--sitemap_files", required=True, help="Directory containing XML sitemap files")
     parser.add_argument("--output_file", required=True, help="Path for output ZIP")
     args = parser.parse_args()
 
-    if not os.path.exists(args.zip_file):
-        print(f"[ERROR] ZIP file not found: {args.zip_file}", flush=True)
+    sitemap_dir = args.sitemap_files
+
+    if not os.path.isdir(sitemap_dir):
+        print(f"[ERROR] Directory not found: {sitemap_dir}", flush=True)
         sys.exit(1)
 
-    # ── Read input ZIP ──────────────────────────────────────────────────────────
-    with zipfile.ZipFile(args.zip_file, "r") as zin:
-        xml_names = [
-            f for f in zin.namelist()
-            if f.endswith(".xml") and not os.path.basename(f).startswith(".")
-            and not f.startswith("__MACOSX")
-        ]
-        if not xml_names:
-            print("[ERROR] No XML files found in the uploaded ZIP.", flush=True)
-            sys.exit(1)
+    xml_files = [
+        os.path.join(sitemap_dir, f)
+        for f in os.listdir(sitemap_dir)
+        if f.endswith(".xml")
+    ]
 
-        print(f"[INFO] Found {len(xml_names)} sitemap(s) in ZIP", flush=True)
-        sitemap_bytes = {name: zin.read(name) for name in xml_names}
+    if not xml_files:
+        print("[ERROR] No XML files found in the uploaded folder.", flush=True)
+        sys.exit(1)
+
+    print(f"[INFO] Found {len(xml_files)} sitemap(s)", flush=True)
 
     # ── Parse sitemaps ──────────────────────────────────────────────────────────
     print("[INFO] Parsing sitemaps...", flush=True)
-    all_data: dict[str, list[str]] = {}
+    all_data: dict = {}
 
-    def parse_one(name):
-        return name, parse_sitemap_bytes(sitemap_bytes[name], name)
+    def parse_one(path):
+        return path, parse_sitemap_file(path)
 
     with ThreadPoolExecutor(max_workers=10) as exe:
-        futures = {exe.submit(parse_one, name): name for name in xml_names}
+        futures = {exe.submit(parse_one, path): path for path in xml_files}
         for i, fut in enumerate(as_completed(futures), 1):
-            name, urls = fut.result()
-            all_data[name] = urls
-            basename = os.path.basename(name)
-            print(f"[INFO] [{i}/{len(xml_names)}] {basename} → {len(urls)} URLs", flush=True)
+            path, urls = fut.result()
+            all_data[path] = urls
+            print(f"[INFO] [{i}/{len(xml_files)}] {os.path.basename(path)} → {len(urls)} URLs", flush=True)
 
     # ── Build duplicate map ─────────────────────────────────────────────────────
     print("[INFO] Building duplicate map...", flush=True)
-    url_map: dict[str, set] = defaultdict(set)
-    for name, urls in all_data.items():
+    url_map = defaultdict(set)
+    for path, urls in all_data.items():
         for url in urls:
-            url_map[url].add(os.path.basename(name))
+            url_map[url].add(os.path.basename(path))
 
     duplicates = {u: s for u, s in url_map.items() if len(s) > 1}
     print(f"[INFO] Found {len(duplicates)} duplicate URL(s) across sitemaps", flush=True)
 
     # ── Write output ZIP ────────────────────────────────────────────────────────
     print("[INFO] Cleaning sitemaps...", flush=True)
-    seen: set[str] = set()
+    seen: set = set()
     total_kept = total_removed = 0
 
     with zipfile.ZipFile(args.output_file, "w", zipfile.ZIP_DEFLATED) as zout:
 
         # Clean sitemaps
-        for name, urls in all_data.items():
-            basename = os.path.basename(name)
+        for path, urls in all_data.items():
+            basename = os.path.basename(path)
             root = ET.Element("urlset")
             root.set("xmlns", "http://www.sitemaps.org/schemas/sitemap/0.9")
             kept = removed = 0

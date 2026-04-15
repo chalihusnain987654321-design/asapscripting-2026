@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { writeFile, unlink } from "fs/promises";
+import { writeFile, unlink, mkdir, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -40,20 +40,38 @@ export async function POST(req: Request) {
 
   // Process inputs — save uploaded files to temp dir
   const resolvedInputs: Record<string, string> = {};
-  const tempFiles: string[] = []; // these get deleted after run
+  const tempFiles: string[] = [];
+  const tempDirs: string[] = [];
 
   for (const inputDef of script.inputs) {
-    const value = formData.get(inputDef.name);
-    if (value instanceof File && value.size > 0) {
-      const originalExt = value.name.includes(".")
-        ? value.name.slice(value.name.lastIndexOf("."))
-        : ".bin";
-      const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}${originalExt}`);
-      await writeFile(tempPath, Buffer.from(await value.arrayBuffer()));
-      tempFiles.push(tempPath);
-      resolvedInputs[inputDef.name] = tempPath;
-    } else if (typeof value === "string" && value.trim()) {
-      resolvedInputs[inputDef.name] = value.trim();
+    if (inputDef.folder) {
+      // Multi-file / folder upload — save all files to a temp directory
+      const files = formData.getAll(inputDef.name).filter(
+        (f): f is File => f instanceof File && f.size > 0
+      );
+      if (files.length > 0) {
+        const tempDir = join(tmpdir(), `asap_${randomUUID()}_${inputDef.name}`);
+        await mkdir(tempDir, { recursive: true });
+        tempDirs.push(tempDir);
+        for (const file of files) {
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          await writeFile(join(tempDir, safeName), Buffer.from(await file.arrayBuffer()));
+        }
+        resolvedInputs[inputDef.name] = tempDir;
+      }
+    } else {
+      const value = formData.get(inputDef.name);
+      if (value instanceof File && value.size > 0) {
+        const originalExt = value.name.includes(".")
+          ? value.name.slice(value.name.lastIndexOf("."))
+          : ".bin";
+        const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}${originalExt}`);
+        await writeFile(tempPath, Buffer.from(await value.arrayBuffer()));
+        tempFiles.push(tempPath);
+        resolvedInputs[inputDef.name] = tempPath;
+      } else if (typeof value === "string" && value.trim()) {
+        resolvedInputs[inputDef.name] = value.trim();
+      }
     }
   }
 
@@ -158,7 +176,7 @@ export async function POST(req: Request) {
         });
         enqueue({ type: "done", exitCode: -1, logId: log._id.toString(), outputFilePath: null });
         controller.close();
-        await cleanupTempFiles(tempFiles);
+        await cleanupTempFiles(tempFiles, tempDirs);
       });
 
       proc.on("close", async (exitCode) => {
@@ -177,7 +195,7 @@ export async function POST(req: Request) {
           outputFilePath: exitCode === 0 ? capturedOutputFilePath : null,
         });
         controller.close();
-        await cleanupTempFiles(tempFiles);
+        await cleanupTempFiles(tempFiles, tempDirs);
       });
     },
   });
@@ -191,6 +209,7 @@ export async function POST(req: Request) {
   });
 }
 
-async function cleanupTempFiles(paths: string[]) {
+async function cleanupTempFiles(paths: string[], dirs: string[] = []) {
   await Promise.allSettled(paths.map((p) => unlink(p)));
+  await Promise.allSettled(dirs.map((d) => rm(d, { recursive: true, force: true })));
 }
