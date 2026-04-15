@@ -72,49 +72,59 @@ export async function POST(req: Request) {
     const { sessionId, totalBatches = 0 } = body;
     if (!sessionId) return new Response("Missing sessionId", { status: 400 });
 
-    // Merge all batch files
     const tmpDir = resolve(tmpdir());
-    const allFiles = (await readdir(tmpDir)).filter(
-      (f) => f.startsWith(`asap_dedup_${sessionId}_`) && f.endsWith(".json")
-    );
-
-    if (allFiles.length === 0) {
-      return new Response("No batch data found for this session", { status: 404 });
-    }
-
-    const allSitemaps: { name: string; urls: string[] }[] = [];
-    for (const f of allFiles) {
-      const data = JSON.parse(await readFile(join(tmpDir, f), "utf8"));
-      allSitemaps.push(...data);
-    }
-
-    const mergedPath = join(tmpDir, `asap_dedup_${sessionId}_merged.json`);
-    await writeFile(mergedPath, JSON.stringify(allSitemaps));
-
     const outputPath = join(tmpDir, `asap_dedup_${sessionId}_output.zip`);
-
-    await connectDB();
-    const log = await ExecutionLog.create({
-      userId: session.user.id,
-      userEmail: session.user.email!,
-      userName: session.user.name!,
-      scriptSlug: "duplicate-sitemap-remover",
-      scriptName: "Duplicate Sitemap Remover",
-      inputs: { sitemaps: allSitemaps.length, batches: totalBatches },
-      status: "running",
-      startedAt: new Date(),
-    });
-
+    const mergedPath = join(tmpDir, `asap_dedup_${sessionId}_merged.json`);
     const pythonBin = process.env.PYTHON_EXECUTABLE || "python3";
     const scriptPath = join(process.cwd(), "scripts", "python", "duplicate_sitemap_remover.py");
 
-    const tempToClean = [...allFiles.map((f) => join(tmpDir, f)), mergedPath];
-
+    // Return SSE headers immediately so Cloudflare doesn't time out while we
+    // merge batch files and spin up the Python process.
     const stream = new ReadableStream({
-      start(controller) {
+      async start(controller) {
         const enqueue = (data: object) => controller.enqueue(sseEvent(data));
-        let outputBuffer = "";
         const startTime = Date.now();
+
+        // ── Merge batch files ───────────────────────────────────────────────
+        enqueue({ type: "output", line: "[INFO] Merging uploaded batches..." });
+
+        const allFiles = (await readdir(tmpDir)).filter(
+          (f) => f.startsWith(`asap_dedup_${sessionId}_`) && f.endsWith(".json")
+        );
+
+        if (allFiles.length === 0) {
+          enqueue({ type: "output", line: "[ERROR] No batch data found for this session." });
+          enqueue({ type: "done", exitCode: -1, outputFilePath: null });
+          controller.close();
+          return;
+        }
+
+        const allSitemaps: { name: string; urls: string[] }[] = [];
+        for (const f of allFiles) {
+          const data = JSON.parse(await readFile(join(tmpDir, f), "utf8"));
+          allSitemaps.push(...data);
+        }
+
+        await writeFile(mergedPath, JSON.stringify(allSitemaps));
+        enqueue({ type: "output", line: `[INFO] Merged ${allSitemaps.length} sitemaps from ${allFiles.length} batches` });
+
+        const tempToClean = [...allFiles.map((f) => join(tmpDir, f)), mergedPath];
+
+        // ── Log to MongoDB ──────────────────────────────────────────────────
+        await connectDB();
+        const log = await ExecutionLog.create({
+          userId: session.user.id,
+          userEmail: session.user.email!,
+          userName: session.user.name!,
+          scriptSlug: "duplicate-sitemap-remover",
+          scriptName: "Duplicate Sitemap Remover",
+          inputs: { sitemaps: allSitemaps.length, batches: totalBatches },
+          status: "running",
+          startedAt: new Date(),
+        });
+
+        // ── Spawn Python ────────────────────────────────────────────────────
+        let outputBuffer = "";
 
         const proc = spawn(pythonBin, [
           scriptPath,
