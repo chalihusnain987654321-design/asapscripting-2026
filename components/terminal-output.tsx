@@ -13,11 +13,13 @@ interface TerminalOutputProps {
 }
 
 export function TerminalOutput({ lines, status }: TerminalOutputProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new output
+  // Scroll only the terminal body — never the page
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
   }, [lines]);
 
   function copyOutput() {
@@ -65,7 +67,7 @@ export function TerminalOutput({ lines, status }: TerminalOutputProps) {
       </div>
 
       {/* Output body */}
-      <div className="bg-gray-950 px-4 py-3 font-mono text-xs text-gray-200 overflow-y-auto max-h-[480px] min-h-[200px]">
+      <div ref={bodyRef} className="bg-gray-950 px-4 py-3 font-mono text-xs text-gray-200 overflow-y-auto max-h-[480px] min-h-[200px]">
         {status === "idle" ? (
           <span className="text-gray-600">Run the script to see output here…</span>
         ) : lines.length === 0 ? (
@@ -86,7 +88,6 @@ export function TerminalOutput({ lines, status }: TerminalOutputProps) {
             </div>
           ))
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   );
