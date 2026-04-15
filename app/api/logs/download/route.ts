@@ -32,7 +32,9 @@ export async function GET(req: Request) {
   const filename = resolvedPath.split(sep).pop() ?? "output";
   const ext = filename.split(".").pop()?.toLowerCase();
   const contentType =
-    ext === "txt" ? "text/plain; charset=utf-8" : "text/csv; charset=utf-8";
+    ext === "txt" ? "text/plain; charset=utf-8"
+    : ext === "zip" ? "application/zip"
+    : "text/csv; charset=utf-8";
 
   return new Response(new Uint8Array(fileBuffer), {
     headers: {

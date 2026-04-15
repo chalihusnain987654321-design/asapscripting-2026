@@ -45,7 +45,10 @@ export async function POST(req: Request) {
   for (const inputDef of script.inputs) {
     const value = formData.get(inputDef.name);
     if (value instanceof File && value.size > 0) {
-      const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}.csv`);
+      const originalExt = value.name.includes(".")
+        ? value.name.slice(value.name.lastIndexOf("."))
+        : ".bin";
+      const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}${originalExt}`);
       await writeFile(tempPath, Buffer.from(await value.arrayBuffer()));
       tempFiles.push(tempPath);
       resolvedInputs[inputDef.name] = tempPath;
@@ -88,6 +91,9 @@ export async function POST(req: Request) {
     resolvedInputs["output_file"] = outputFilePath;
   } else if (slug === "url-extractor") {
     outputFilePath = join(tmpdir(), `extracted_urls_${randomUUID()}.csv`);
+    resolvedInputs["output_file"] = outputFilePath;
+  } else if (slug === "duplicate-sitemap-remover") {
+    outputFilePath = join(tmpdir(), `clean_sitemaps_${randomUUID()}.zip`);
     resolvedInputs["output_file"] = outputFilePath;
   }
 

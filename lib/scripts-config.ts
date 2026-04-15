@@ -7,6 +7,7 @@ import {
   Clock,
   Trash2,
   BarChart3,
+  Filter,
   type LucideIcon,
 } from "lucide-react";
 
@@ -196,6 +197,24 @@ export const scripts: ScriptConfig[] = [
         type: "textarea",
         placeholder: "https://example.com/old-sitemap.xml\nhttps://example.com/sitemap2.xml",
         description: "Enter one sitemap URL per line.",
+        required: true,
+      },
+    ],
+  },
+  {
+    slug: "duplicate-sitemap-remover",
+    name: "Duplicate Sitemap Remover",
+    description: "Upload a ZIP of XML sitemaps — removes duplicate URLs across all files and exports clean sitemaps + a duplicates report.",
+    icon: Filter,
+    pythonFile: "duplicate_sitemap_remover.py",
+    outputLabel: "ZIP with clean sitemaps + duplicates CSV",
+    inputs: [
+      {
+        name: "zip_file",
+        label: "Sitemaps ZIP",
+        type: "file",
+        accept: ".zip",
+        description: "Upload a ZIP file containing all your XML sitemap files.",
         required: true,
       },
     ],
