@@ -79,7 +79,7 @@ def main():
         for i, fut in enumerate(as_completed(futures), 1):
             path, urls = fut.result()
             all_data[path] = urls
-            print(f"[INFO] [{i}/{len(xml_files)}] {os.path.basename(path)} → {len(urls)} URLs", flush=True)
+            print(f"[INFO] [{i}/{len(xml_files)}] {os.path.basename(path)} ->{len(urls)} URLs", flush=True)
 
     # ── Build duplicate map ─────────────────────────────────────────────────────
     print("[INFO] Building duplicate map...", flush=True)
@@ -118,7 +118,7 @@ def main():
             zout.writestr(f"clean_sitemaps/{basename}", xml_bytes)
             total_kept += kept
             total_removed += removed
-            print(f"[INFO] {basename} → kept: {kept}, removed: {removed}", flush=True)
+            print(f"[INFO] {basename} ->kept: {kept}, removed: {removed}", flush=True)
 
         # Duplicates CSV (batched at 50,000 rows per file)
         if duplicates:
