@@ -232,8 +232,133 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
     setFieldValues((prev) => ({ ...prev, [name]: value }));
   }
 
+  // ── Duplicate Sitemap Remover — batched upload handler ──────────────────────
+  // Processes thousands of XML files by uploading in batches of 50 to avoid
+  // Cloudflare's 100 MB request body limit.
+  async function handleDedupSubmit() {
+    const fileInput = script.inputs.find((i) => i.folder);
+    if (!fileInput) return;
+    const files = fieldValues[fileInput.name];
+    if (!(files instanceof FileList) || files.length === 0) return;
+
+    setLines([]);
+    setStatus("running");
+    setOutputFilePath(null);
+
+    const BATCH_SIZE = 50;
+    const totalFiles = files.length;
+    const totalBatches = Math.ceil(totalFiles / BATCH_SIZE);
+    let sessionId: string | null = null;
+
+    // ── Upload batches ────────────────────────────────────────────────────────
+    for (let b = 0; b < totalBatches; b++) {
+      const start = b * BATCH_SIZE;
+      const batchFiles = Array.from(files).slice(start, start + BATCH_SIZE);
+      setLines((p) => [...p, `[INFO] Parsing & uploading batch ${b + 1}/${totalBatches} (${start + batchFiles.length}/${totalFiles} files)...`]);
+
+      // Parse XML locally
+      const parsed: { name: string; urls: string[] }[] = [];
+      for (const file of batchFiles) {
+        const basename = file.name.split(/[/\\]/).pop() || file.name;
+        try {
+          const text = await file.text();
+          const doc = new DOMParser().parseFromString(text, "text/xml");
+          const urls = Array.from(doc.getElementsByTagNameNS("*", "loc"))
+            .map((el) => (el.textContent || "").trim())
+            .filter(Boolean);
+          parsed.push({ name: basename, urls });
+        } catch {
+          parsed.push({ name: basename, urls: [] });
+        }
+      }
+
+      // Upload batch
+      let res: Response;
+      try {
+        res = await fetch("/api/scripts/dedup-sitemaps", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phase: "batch", sessionId, batchNum: b, sitemaps: parsed }),
+        });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        setLines((p) => [...p, `[ERROR] Failed to upload batch ${b + 1}: ${detail}`]);
+        setStatus("error");
+        return;
+      }
+
+      if (!res.ok) {
+        setLines((p) => [...p, `[ERROR] Server rejected batch ${b + 1}: ${res.status}`]);
+        setStatus("error");
+        return;
+      }
+
+      const data = await res.json();
+      sessionId = data.sessionId;
+    }
+
+    // ── Run deduplication ─────────────────────────────────────────────────────
+    setLines((p) => [...p, `[INFO] All ${totalFiles} sitemaps uploaded. Starting deduplication...`]);
+
+    let runRes: Response;
+    try {
+      runRes = await fetch("/api/scripts/dedup-sitemaps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phase: "run", sessionId, totalBatches }),
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setLines((p) => [...p, `[ERROR] Failed to start run: ${detail}`]);
+      setStatus("error");
+      return;
+    }
+
+    if (!runRes.ok || !runRes.body) {
+      const text = await runRes.text().catch(() => "Unknown error");
+      setLines((p) => [...p, `[ERROR] ${text}`]);
+      setStatus("error");
+      return;
+    }
+
+    // Stream SSE output
+    const reader = runRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let exitCode = -1;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
+        if (!dataLine) continue;
+        let event: { type: string; line?: string; exitCode?: number; outputFilePath?: string | null };
+        try { event = JSON.parse(dataLine.slice(6)); } catch { continue; }
+        if (event.type === "output" && event.line) setLines((p) => [...p, event.line!]);
+        else if (event.type === "done") {
+          exitCode = event.exitCode ?? -1;
+          if (event.outputFilePath) setOutputFilePath(event.outputFilePath);
+        }
+      }
+    }
+
+    setStatus(exitCode === 0 ? "success" : "error");
+    router.refresh();
+  }
+
   async function handleStandardSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Duplicate Sitemap Remover uses batch upload — separate handler
+    if (slug === "duplicate-sitemap-remover") {
+      await handleDedupSubmit();
+      return;
+    }
+
     setLines([]);
     setStatus("running");
     setOutputFilePath(null);
