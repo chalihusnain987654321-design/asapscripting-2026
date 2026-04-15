@@ -276,8 +276,9 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
       let response: Response;
       try {
         response = await fetch("/api/scripts/run", { method: "POST", body: formData });
-      } catch {
-        setLines((p) => [...p, "[ERROR] Failed to reach the server."]);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        setLines((p) => [...p, `[ERROR] Failed to reach the server: ${detail}`]);
         allSuccess = false;
         break;
       }

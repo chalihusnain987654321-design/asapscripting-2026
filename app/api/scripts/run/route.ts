@@ -9,6 +9,7 @@ import { connectDB, ExecutionLog, Settings } from "@/lib/mongodb";
 import { getScriptBySlug } from "@/lib/scripts-config";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // 5 minutes
 
 function sseEvent(data: object): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
