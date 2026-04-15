@@ -233,8 +233,8 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
   }
 
   // ── Duplicate Sitemap Remover — batched upload handler ──────────────────────
-  // Processes thousands of XML files by uploading in batches of 50 to avoid
-  // Cloudflare's 100 MB request body limit.
+  // Processes thousands of XML files by uploading in batches of 20, gzip-
+  // compressed, to stay well under Cloudflare's 100 MB request body limit.
   async function handleDedupSubmit() {
     const fileInput = script.inputs.find((i) => i.folder);
     if (!fileInput) return;
@@ -245,10 +245,19 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
     setStatus("running");
     setOutputFilePath(null);
 
-    const BATCH_SIZE = 50;
+    const BATCH_SIZE = 20;
     const totalFiles = files.length;
     const totalBatches = Math.ceil(totalFiles / BATCH_SIZE);
     let sessionId: string | null = null;
+
+    // Compress a JSON-serialisable value with gzip
+    async function compressJson(data: unknown): Promise<ArrayBuffer> {
+      const stream = new CompressionStream("gzip");
+      const writer = stream.writable.getWriter();
+      writer.write(new TextEncoder().encode(JSON.stringify(data)));
+      writer.close();
+      return new Response(stream.readable).arrayBuffer();
+    }
 
     // ── Upload batches ────────────────────────────────────────────────────────
     for (let b = 0; b < totalBatches; b++) {
@@ -272,14 +281,13 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
         }
       }
 
-      // Upload batch
+      // Compress and upload batch via FormData
       let res: Response;
       try {
-        res = await fetch("/api/scripts/dedup-sitemaps", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phase: "batch", sessionId, batchNum: b, sitemaps: parsed }),
-        });
+        const compressed = await compressJson({ phase: "batch", sessionId, batchNum: b, sitemaps: parsed });
+        const fd = new FormData();
+        fd.append("data", new Blob([compressed], { type: "application/octet-stream" }));
+        res = await fetch("/api/scripts/dedup-sitemaps", { method: "POST", body: fd });
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         setLines((p) => [...p, `[ERROR] Failed to upload batch ${b + 1}: ${detail}`]);

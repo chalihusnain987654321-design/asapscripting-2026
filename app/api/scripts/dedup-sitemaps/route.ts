@@ -3,9 +3,13 @@ import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { randomUUID } from "crypto";
 import { spawn } from "child_process";
+import { gunzip } from "zlib";
+import { promisify } from "util";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB, ExecutionLog } from "@/lib/mongodb";
+
+const gunzipAsync = promisify(gunzip);
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -35,9 +39,21 @@ export async function POST(req: Request) {
   };
 
   try {
-    body = await req.json();
+    const contentType = req.headers.get("content-type") ?? "";
+    if (contentType.includes("multipart/form-data")) {
+      // Batch phase — gzip-compressed FormData blob
+      const fd = await req.formData();
+      const blob = fd.get("data") as Blob | null;
+      if (!blob) return new Response("Missing data field", { status: 400 });
+      const compressed = Buffer.from(await blob.arrayBuffer());
+      const decompressed = await gunzipAsync(compressed);
+      body = JSON.parse(decompressed.toString("utf-8"));
+    } else {
+      // Run phase — plain JSON (small payload)
+      body = await req.json();
+    }
   } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    return new Response("Invalid request body", { status: 400 });
   }
 
   const { phase } = body;
