@@ -69,7 +69,7 @@ export async function POST(req: Request) {
 
   // ── Run phase ────────────────────────────────────────────────────────────────
   if (phase === "run") {
-    const { sessionId, totalBatches = 0 } = body;
+    const { sessionId, totalBatches = 0, totalSitemaps = 0 } = body as typeof body & { totalSitemaps?: number };
     if (!sessionId) return new Response("Missing sessionId", { status: 400 });
 
     const tmpDir = resolve(tmpdir());
@@ -99,14 +99,18 @@ export async function POST(req: Request) {
           return;
         }
 
-        const allSitemaps: { name: string; urls: string[] }[] = [];
+        // Concatenate JSON arrays at string level — avoids parsing URL data
+        // in Node.js and keeps memory usage low regardless of sitemap size.
+        const parts: string[] = [];
         for (const f of allFiles) {
-          const data = JSON.parse(await readFile(join(tmpDir, f), "utf8"));
-          allSitemaps.push(...data);
+          const content = (await readFile(join(tmpDir, f), "utf8")).trim();
+          if (content.length <= 2) continue; // empty array "[]"
+          const inner = content.slice(1, -1).trim();
+          if (inner) parts.push(inner);
         }
+        await writeFile(mergedPath, "[" + parts.join(",") + "]");
 
-        await writeFile(mergedPath, JSON.stringify(allSitemaps));
-        enqueue({ type: "output", line: `[INFO] Merged ${allSitemaps.length} sitemaps from ${allFiles.length} batches` });
+        enqueue({ type: "output", line: `[INFO] Merged ${totalSitemaps} sitemaps from ${allFiles.length} batches` });
 
         const tempToClean = [...allFiles.map((f) => join(tmpDir, f)), mergedPath];
 
@@ -118,7 +122,7 @@ export async function POST(req: Request) {
           userName: session.user.name!,
           scriptSlug: "duplicate-sitemap-remover",
           scriptName: "Duplicate Sitemap Remover",
-          inputs: { sitemaps: allSitemaps.length, batches: totalBatches },
+          inputs: { sitemaps: totalSitemaps, batches: totalBatches },
           status: "running",
           startedAt: new Date(),
         });

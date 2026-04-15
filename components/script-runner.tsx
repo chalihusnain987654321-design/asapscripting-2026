@@ -313,7 +313,7 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
       runRes = await fetch("/api/scripts/dedup-sitemaps", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase: "run", sessionId, totalBatches }),
+        body: JSON.stringify({ phase: "run", sessionId, totalBatches, totalSitemaps: totalFiles }),
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
