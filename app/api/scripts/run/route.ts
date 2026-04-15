@@ -54,7 +54,7 @@ export async function POST(req: Request) {
         await mkdir(tempDir, { recursive: true });
         tempDirs.push(tempDir);
         for (const file of files) {
-          const safeName = file.name.replace(/[/\\]/g, "_");
+          const safeName = file.name.split(/[/\\]/).pop() || file.name;
           await writeFile(join(tempDir, safeName), Buffer.from(await file.arrayBuffer()));
         }
         resolvedInputs[inputDef.name] = tempDir;
