@@ -9,14 +9,18 @@ import sys
 
 import requests
 
+# Shared IndexNow API key for all sites
+INDEXNOW_KEY = "be54d4b639b44b8ca5b9cd5d5493a8e6"
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", required=True, help="Website host URL (e.g. https://example.com/)")
-    parser.add_argument("--key", required=True, help="IndexNow API key")
-    parser.add_argument("--key_location", required=True, help="Public URL of the key file")
     parser.add_argument("--urls", required=True, help="Newline-separated URLs to submit")
     args = parser.parse_args()
+
+    host = args.host.rstrip("/")
+    key_location = f"{host}/{INDEXNOW_KEY}.txt"
 
     url_list = [u.strip() for u in args.urls.splitlines() if u.strip()]
 
@@ -25,14 +29,14 @@ def main():
         sys.exit(1)
 
     print(f"[INFO] Total URLs to submit: {len(url_list)}", flush=True)
-    print(f"[INFO] Host: {args.host}", flush=True)
-    print(f"[INFO] Key Location: {args.key_location}", flush=True)
+    print(f"[INFO] Host: {host}", flush=True)
+    print(f"[INFO] Key Location: {key_location}", flush=True)
     print("[INFO] Sending request to Bing IndexNow...", flush=True)
 
     payload = {
-        "host": args.host.rstrip("/"),
-        "key": args.key,
-        "keyLocation": args.key_location,
+        "host": host,
+        "key": INDEXNOW_KEY,
+        "keyLocation": key_location,
         "urlList": url_list,
     }
 

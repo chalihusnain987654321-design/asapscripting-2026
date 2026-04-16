@@ -113,22 +113,6 @@ export const scripts: ScriptConfig[] = [
         required: true,
       },
       {
-        name: "key",
-        label: "IndexNow API Key",
-        type: "text",
-        placeholder: "b57d2a278cba441c82038649f7d51cbb",
-        description: "Your IndexNow API key (the filename without .txt).",
-        required: true,
-      },
-      {
-        name: "key_location",
-        label: "Key File URL",
-        type: "url",
-        placeholder: "https://example.com/your-key.txt",
-        description: "Public URL where your key .txt file is hosted.",
-        required: true,
-      },
-      {
         name: "urls",
         label: "URLs to Submit",
         type: "textarea",
