@@ -53,12 +53,12 @@ interface BacklinksClientProps {
 
 const BACKLINK_TYPES = [
   { value: "guest-post", label: "Guest Post" },
-  { value: "directory", label: "Directory" },
-  { value: "forum", label: "Forum" },
-  { value: "social", label: "Social" },
-  { value: "article", label: "Article" },
-  { value: "comment", label: "Comment" },
-  { value: "press-release", label: "Press Release" },
+  { value: "directory", label: "Business Listing" },
+  { value: "forum", label: "Profiles Creation" },
+  { value: "social", label: "Social Bookmarks" },
+  { value: "article", label: "Web 2.0" },
+  { value: "comment", label: "UGC" },
+  { value: "press-release", label: "Forum" },
   { value: "other", label: "Other" },
 ];
 
