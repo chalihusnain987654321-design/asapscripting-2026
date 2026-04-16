@@ -81,7 +81,7 @@ export const scripts: ScriptConfig[] = [
   },
   {
     slug: "url-indexer",
-    name: "URL Indexer",
+    name: "GSC URL Indexer",
     description: "Submits URLs to Google's Indexing API. Add multiple websites at once — 200 URLs per site.",
     icon: Upload,
     pythonFile: "url_indexer.py",
@@ -98,7 +98,7 @@ export const scripts: ScriptConfig[] = [
   },
   {
     slug: "bing-indexnow",
-    name: "Bing IndexNow",
+    name: "Bing URL Indexer",
     description: "Submit URLs to Bing instantly via the IndexNow protocol — no waiting for the crawler.",
     icon: Zap,
     pythonFile: "bing_indexnow.py",
