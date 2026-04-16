@@ -455,8 +455,9 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
       }
 
       if (!response.ok || !response.body) {
-        const text = await response.text().catch(() => "Unknown error");
-        setLines((p) => [...p, `[ERROR] ${text}`]);
+        const text = await response.text().catch(() => "");
+        const msg = text.trim().replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        setLines((p) => [...p, `[ERROR] HTTP ${response.status}${msg ? ": " + msg.slice(0, 300) : " (empty response)"}`]);
         allSuccess = false;
         break;
       }
