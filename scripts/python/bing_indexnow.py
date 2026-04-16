@@ -12,10 +12,6 @@ import traceback
 
 import requests
 
-# Force UTF-8 output so special characters in responses don't crash the script
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-
 # Shared IndexNow API key for all sites
 INDEXNOW_KEY = "be54d4b639b44b8ca5b9cd5d5493a8e6"
 BATCH_SIZE = 200
@@ -31,6 +27,8 @@ def main():
     key_location = f"{host}/{INDEXNOW_KEY}.txt"
 
     url_list = [u.strip() for u in args.urls.splitlines() if u.strip()]
+
+    print("[INFO] Bing URL Indexer started.", flush=True)
 
     if not url_list:
         print("[ERROR] No URLs provided.", flush=True)
@@ -92,7 +90,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        print(f"[ERROR] Unexpected crash: {e}", flush=True)
+    except BaseException as e:
+        print(f"[ERROR] Unexpected crash: {type(e).__name__}: {e}", flush=True)
         traceback.print_exc()
         sys.exit(1)

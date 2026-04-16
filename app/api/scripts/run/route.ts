@@ -149,7 +149,8 @@ export async function POST(req: Request) {
       const handleOutput = (chunk: Buffer) => {
         const text = chunk.toString();
         outputBuffer += text;
-        for (const line of text.split("\n")) {
+        for (const raw of text.split("\n")) {
+          const line = raw.replace(/\r/g, "");
           if (line.trim()) enqueue({ type: "output", line });
         }
       };
