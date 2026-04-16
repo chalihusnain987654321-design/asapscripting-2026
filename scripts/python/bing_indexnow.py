@@ -6,6 +6,7 @@ URLs are sent in batches of 200 to avoid timeouts on large submissions.
 """
 import argparse
 import json
+import os
 import sys
 import time
 import traceback
@@ -26,7 +27,13 @@ def main():
     host = args.host.rstrip("/")
     key_location = f"{host}/{INDEXNOW_KEY}.txt"
 
-    url_list = [u.strip() for u in args.urls.splitlines() if u.strip()]
+    # When the URL list is large, the route writes it to a temp .txt file
+    # and passes the file path instead of the raw string.
+    if os.path.isfile(args.urls):
+        with open(args.urls, "r", encoding="utf-8") as f:
+            url_list = [u.strip() for u in f if u.strip()]
+    else:
+        url_list = [u.strip() for u in args.urls.splitlines() if u.strip()]
 
     print("[INFO] Bing URL Indexer started.", flush=True)
 

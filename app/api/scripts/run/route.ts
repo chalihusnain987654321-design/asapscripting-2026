@@ -74,7 +74,17 @@ async function _handle(req: Request) {
         tempFiles.push(tempPath);
         resolvedInputs[inputDef.name] = tempPath;
       } else if (typeof value === "string" && value.trim()) {
-        resolvedInputs[inputDef.name] = value.trim();
+        const str = value.trim();
+        // Write large strings to a temp file to avoid OS ENAMETOOLONG limits.
+        // Python scripts that receive a path ending in .txt should read from it.
+        if (str.length > 8000) {
+          const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}.txt`);
+          await writeFile(tempPath, str);
+          tempFiles.push(tempPath);
+          resolvedInputs[inputDef.name] = tempPath;
+        } else {
+          resolvedInputs[inputDef.name] = str;
+        }
       }
     }
   }
