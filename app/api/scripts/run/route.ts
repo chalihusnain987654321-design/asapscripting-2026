@@ -25,6 +25,16 @@ function sseError(message: string): Response {
 }
 
 export async function POST(req: Request) {
+  try {
+    return await _handle(req);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[run route] Unhandled error:", err);
+    return new Response(msg || "Unknown server error", { status: 500 });
+  }
+}
+
+async function _handle(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return new Response("Unauthorized", { status: 401 });
 
@@ -203,6 +213,7 @@ export async function POST(req: Request) {
     },
   });
 }
+
 
 async function cleanupTempFiles(paths: string[]) {
   await Promise.allSettled(paths.map((p) => unlink(p)));
