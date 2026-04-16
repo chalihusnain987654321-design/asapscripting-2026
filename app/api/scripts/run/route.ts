@@ -143,7 +143,7 @@ export async function POST(req: Request) {
       const startTime = Date.now();
 
       const proc = spawn(pythonBin, spawnArgs, {
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       const handleOutput = (chunk: Buffer) => {

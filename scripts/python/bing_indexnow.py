@@ -8,8 +8,13 @@ import argparse
 import json
 import sys
 import time
+import traceback
 
 import requests
+
+# Force UTF-8 output so special characters in responses don't crash the script
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # Shared IndexNow API key for all sites
 INDEXNOW_KEY = "be54d4b639b44b8ca5b9cd5d5493a8e6"
@@ -58,9 +63,10 @@ def main():
                 timeout=30,
             )
 
+            resp_text = response.content.decode("utf-8", errors="replace").strip()
             print(f"[INFO] Status Code: {response.status_code}", flush=True)
-            if response.text.strip():
-                print(f"[INFO] Response: {response.text.strip()}", flush=True)
+            if resp_text:
+                print(f"[INFO] Response: {resp_text}", flush=True)
 
             if response.status_code in (200, 202):
                 submitted += len(batch)
@@ -84,4 +90,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"[ERROR] Unexpected crash: {e}", flush=True)
+        traceback.print_exc()
+        sys.exit(1)
