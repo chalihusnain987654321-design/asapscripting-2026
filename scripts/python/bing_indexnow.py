@@ -97,7 +97,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except BaseException as e:
+    except Exception as e:
         print(f"[ERROR] Unexpected crash: {type(e).__name__}: {e}", flush=True)
         traceback.print_exc()
         sys.exit(1)
