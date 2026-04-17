@@ -102,7 +102,7 @@ export const scripts: ScriptConfig[] = [
     description: "Submit URLs to Bing instantly via the IndexNow protocol — no waiting for the crawler.",
     icon: Zap,
     pythonFile: "bing_indexnow.py",
-    outputLabel: "Submission status from Bing",
+    outputLabel: "Submission log CSV",
     inputs: [
       {
         name: "host",

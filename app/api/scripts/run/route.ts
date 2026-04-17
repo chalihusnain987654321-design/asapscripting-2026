@@ -127,6 +127,9 @@ async function _handle(req: Request) {
   } else if (slug === "duplicate-sitemap-remover") {
     outputFilePath = join(tmpdir(), `clean_sitemaps_${randomUUID()}.zip`);
     resolvedInputs["output_file"] = outputFilePath;
+  } else if (slug === "bing-indexnow") {
+    outputFilePath = join(tmpdir(), `bing_indexnow_${randomUUID()}.csv`);
+    resolvedInputs["output_file"] = outputFilePath;
   }
 
   // Create execution log
