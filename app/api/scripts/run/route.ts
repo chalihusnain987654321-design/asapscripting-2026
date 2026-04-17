@@ -75,9 +75,9 @@ async function _handle(req: Request) {
         resolvedInputs[inputDef.name] = tempPath;
       } else if (typeof value === "string" && value.trim()) {
         const str = value.trim();
-        // Write large strings to a temp file to avoid OS ENAMETOOLONG limits.
-        // Python scripts that receive a path ending in .txt should read from it.
-        if (str.length > 8000) {
+        // bing-indexnow passes URLs as a CLI arg which hits OS ENAMETOOLONG
+        // when the list is large — write to temp file and pass the path instead.
+        if (slug === "bing-indexnow" && str.length > 8000) {
           const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}.txt`);
           await writeFile(tempPath, str);
           tempFiles.push(tempPath);
