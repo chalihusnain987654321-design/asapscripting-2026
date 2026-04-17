@@ -508,7 +508,7 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
           <p className="text-sm text-muted-foreground shrink-0">
             {sites.length} site{sites.length !== 1 ? "s" : ""} · {totalUrls} URL{totalUrls !== 1 ? "s" : ""} total
           </p>
-          {accountNames.length === 0 ? (
+          {script.requiresServiceAccount && accountNames.length === 0 ? (
             <p className="text-sm text-destructive">
               No service accounts.{" "}
               <a href="/settings" className="underline">Go to Settings</a>
@@ -529,6 +529,7 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
             index={index}
             run={getSiteRun(site.id)}
             accountNames={accountNames}
+            requiresServiceAccount={!!script.requiresServiceAccount}
             canRemove={sites.length > 1}
             onRun={() => runSite(site)}
             onStop={() => stopSite(site.id)}
@@ -634,6 +635,7 @@ interface SiteCardProps {
   index: number;
   run: SiteRunState;
   accountNames: string[];
+  requiresServiceAccount: boolean;
   canRemove: boolean;
   onRun: () => void;
   onStop: () => void;
@@ -643,7 +645,7 @@ interface SiteCardProps {
 }
 
 function SiteCard({
-  site, index, run, accountNames, canRemove,
+  site, index, run, accountNames, requiresServiceAccount, canRemove,
   onRun, onStop, onReset, onRemove, onUpdate,
 }: SiteCardProps) {
   const urlCount = site.urls.split("\n").filter((u) => u.trim()).length;
@@ -652,8 +654,7 @@ function SiteCard({
 
   const canRun =
     !isRunning &&
-    !noAccounts &&
-    !!site.serviceAccount &&
+    (!requiresServiceAccount || (!noAccounts && !!site.serviceAccount)) &&
     urlCount > 0;
 
   return (
@@ -687,23 +688,25 @@ function SiteCard({
       <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x">
         {/* Left — inputs */}
         <div className="px-4 py-3 space-y-3">
-          {/* Service account selector */}
-          <div className="space-y-1">
-            <Label className="text-xs">Service Account <span className="text-destructive">*</span></Label>
-            {noAccounts ? (
-              <p className="text-xs text-destructive">
-                No accounts. <a href="/settings" className="underline">Go to Settings</a>
-              </p>
-            ) : (
-              <SingleAccountSelector
-                accountNames={accountNames}
-                selected={site.serviceAccount}
-                onChange={(v) => onUpdate("serviceAccount", v)}
-                disabled={isRunning}
-                size="sm"
-              />
-            )}
-          </div>
+          {/* Service account selector — only for scripts that need it */}
+          {requiresServiceAccount && (
+            <div className="space-y-1">
+              <Label className="text-xs">Service Account <span className="text-destructive">*</span></Label>
+              {noAccounts ? (
+                <p className="text-xs text-destructive">
+                  No accounts. <a href="/settings" className="underline">Go to Settings</a>
+                </p>
+              ) : (
+                <SingleAccountSelector
+                  accountNames={accountNames}
+                  selected={site.serviceAccount}
+                  onChange={(v) => onUpdate("serviceAccount", v)}
+                  disabled={isRunning}
+                  size="sm"
+                />
+              )}
+            </div>
+          )}
 
           {/* URLs textarea */}
           <div className="space-y-1">
