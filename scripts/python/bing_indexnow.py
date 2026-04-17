@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import traceback
+from urllib.parse import urlparse
 
 import requests
 
@@ -30,13 +31,9 @@ def _write_csv(output_file, results):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", required=True, help="Website host URL (e.g. https://example.com/)")
     parser.add_argument("--urls", required=True, help="Newline-separated URLs to submit")
     parser.add_argument("--output_file", required=False, help="Path to write submission log CSV")
     args = parser.parse_args()
-
-    host = args.host.rstrip("/")
-    key_location = f"{host}/{INDEXNOW_KEY}.txt"
 
     # When the URL list is large, the route writes it to a temp .txt file
     # and passes the file path instead of the raw string.
@@ -51,6 +48,11 @@ def main():
     if not url_list:
         print("[ERROR] No URLs provided.", flush=True)
         sys.exit(1)
+
+    # Auto-extract host from the first URL
+    parsed = urlparse(url_list[0])
+    host = f"{parsed.scheme}://{parsed.netloc}"
+    key_location = f"{host}/{INDEXNOW_KEY}.txt"
 
     total = len(url_list)
     batches = [url_list[i:i + BATCH_SIZE] for i in range(0, total, BATCH_SIZE)]

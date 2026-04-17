@@ -105,19 +105,9 @@ export const scripts: ScriptConfig[] = [
     outputLabel: "Submission log CSV",
     inputs: [
       {
-        name: "host",
-        label: "Website Host",
-        type: "url",
-        placeholder: "https://example.com/",
-        description: "Your website's root URL.",
-        required: true,
-      },
-      {
         name: "urls",
-        label: "URLs to Submit",
-        type: "textarea",
-        placeholder: "https://example.com/page-1\nhttps://example.com/page-2",
-        description: "Enter one URL per line.",
+        label: "URLs",
+        type: "multi-site-urls",
         required: true,
       },
     ],
