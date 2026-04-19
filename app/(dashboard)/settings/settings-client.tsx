@@ -325,7 +325,7 @@ function GroupsCard({
         <div>
           <h3 className="font-semibold">Team Groups</h3>
           <p className="text-sm text-muted-foreground">
-            Assign supervisors to groups. Each supervisor can view their group members' activity.
+            Assign supervisors to groups. Each supervisor can view their group members&apos; activity.
           </p>
         </div>
         <Badge variant={groups.length > 0 ? "success" : "outline"}>
