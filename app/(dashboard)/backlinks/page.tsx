@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { connectDB, Backlink, User } from "@/lib/mongodb";
-import { BacklinksClient, type BacklinkRow, type TeamMember } from "./backlinks-client";
+import { connectDB, Backlink, User, Group } from "@/lib/mongodb";
+import { BacklinksClient, type BacklinkRow, type TeamMember, type GroupOption } from "./backlinks-client";
 
 const PAGE_SIZE = 20;
 
@@ -12,22 +12,49 @@ export default async function BacklinksPage({
   searchParams: Record<string, string>;
 }) {
   const session = await getServerSession(authOptions);
-  const isSuperAdmin = session?.user.role === "super-admin";
+  const role = session?.user.role;
+  const isSuperAdmin = role === "super-admin";
+  const isSupervisor = role === "sub-lead";
   const currentUserId = session!.user.id;
 
   await connectDB();
 
-  // For admin: fetch all members for tabs
-  const teamMembers: TeamMember[] = isSuperAdmin
-    ? (await User.find({ isActive: true, role: { $ne: "super-admin" } }).sort({ name: 1 }).lean()).map((u) => ({
-        id: u._id.toString(),
-        name: u.name,
-      }))
-    : [];
+  let teamMembers: TeamMember[] = [];
+  let groups: GroupOption[] = [];
+  let groupMemberMap: Record<string, string[]> = {};
 
-  // For admin: selectedTab = "" means "All", or a userId
-  // For user: always filter by their own userId
-  const selectedTab = isSuperAdmin ? (searchParams.tab ?? "") : currentUserId;
+  if (isSuperAdmin) {
+    // Super-admin: all active non-admin members + all groups
+    teamMembers = (
+      await User.find({ isActive: true, role: { $ne: "super-admin" } }).sort({ name: 1 }).lean()
+    ).map((u) => ({ id: u._id.toString(), name: u.name }));
+
+    const rawGroups = await Group.find({}).sort({ name: 1 }).lean();
+    groups = rawGroups.map((g) => ({
+      id: g._id.toString(),
+      name: g.name,
+      memberUserIds: [g.leadUserId.toString(), ...g.memberUserIds.map((id) => id.toString())],
+    }));
+    groupMemberMap = Object.fromEntries(groups.map((g) => [g.id, g.memberUserIds]));
+  } else if (isSupervisor) {
+    // Supervisor: only their group members
+    const myGroup = await Group.findOne({ leadUserId: currentUserId }).lean();
+    if (myGroup) {
+      const memberIds = myGroup.memberUserIds.map((id) => id.toString());
+      const allIds = [currentUserId, ...memberIds];
+      teamMembers = (
+        await User.find({ _id: { $in: allIds }, isActive: true }).sort({ name: 1 }).lean()
+      ).map((u) => ({ id: u._id.toString(), name: u.name }));
+    } else {
+      // No group assigned — only own data
+      teamMembers = [];
+    }
+  }
+
+  // Selected tab / team
+  const canViewTeam = isSuperAdmin || isSupervisor;
+  const selectedTab = canViewTeam ? (searchParams.tab ?? "") : currentUserId;
+  const selectedTeamId = isSuperAdmin ? (searchParams.teamId ?? "") : "";
 
   const type = searchParams.type?.trim() ?? "";
   const status = searchParams.status?.trim() ?? "";
@@ -37,9 +64,24 @@ export default async function BacklinksPage({
 
   const filter: Record<string, unknown> = {};
 
-  // Admin: filter by tab (all or specific user). User: always own
-  if (isSuperAdmin && selectedTab) filter.userId = selectedTab;
-  if (!isSuperAdmin) filter.userId = currentUserId;
+  if (isSuperAdmin) {
+    if (selectedTeamId && groupMemberMap[selectedTeamId]) {
+      filter.userId = { $in: groupMemberMap[selectedTeamId] };
+    } else if (selectedTab) {
+      filter.userId = selectedTab;
+    }
+    // else: no filter = all
+  } else if (isSupervisor) {
+    // Supervisor can only see their own group members (including themselves)
+    const allowedIds = teamMembers.map((m) => m.id);
+    if (selectedTab && allowedIds.includes(selectedTab)) {
+      filter.userId = selectedTab;
+    } else {
+      filter.userId = { $in: allowedIds.length > 0 ? allowedIds : [currentUserId] };
+    }
+  } else {
+    filter.userId = currentUserId;
+  }
 
   if (type) filter.type = type;
   if (status) filter.status = status;
@@ -62,13 +104,17 @@ export default async function BacklinksPage({
     Backlink.countDocuments({ ...filter, status: "broken" }),
   ]);
 
-  // For admin tabs: per-member counts
+  // Per-member and per-group counts
   const memberCounts: Record<string, number> = {};
-  if (isSuperAdmin) {
+  const groupCounts: Record<string, number> = {};
+  if (canViewTeam) {
     const allCounts = await Backlink.aggregate([
       { $group: { _id: "$userId", count: { $sum: 1 } } },
     ]);
     for (const c of allCounts) memberCounts[c._id] = c.count;
+    for (const g of groups) {
+      groupCounts[g.id] = g.memberUserIds.reduce((sum, uid) => sum + (memberCounts[uid] ?? 0), 0);
+    }
   }
 
   const rows: BacklinkRow[] = rawRows.map((b) => ({
@@ -95,10 +141,14 @@ export default async function BacklinksPage({
         page={page}
         pageSize={PAGE_SIZE}
         isSuperAdmin={isSuperAdmin}
+        isSupervisor={isSupervisor}
         currentUserId={currentUserId}
         teamMembers={teamMembers}
         memberCounts={memberCounts}
         selectedTab={selectedTab}
+        groups={groups}
+        groupCounts={groupCounts}
+        selectedTeamId={selectedTeamId}
         filters={{ type, status, from, to }}
       />
     </Suspense>

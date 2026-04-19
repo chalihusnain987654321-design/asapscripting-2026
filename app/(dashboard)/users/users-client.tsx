@@ -32,12 +32,14 @@ interface UsersClientProps {
 
 function roleRank(role: string): number {
   if (role === "super-admin") return 3;
-  if (role === "admin") return 2;
-  return 1;
+  if (role === "sub-lead") return 2;
+  if (role === "admin") return 1;
+  return 0;
 }
 
 function roleLabel(role: string) {
   if (role === "super-admin") return "Admin";
+  if (role === "sub-lead") return "Supervisor";
   return "User";
 }
 
@@ -47,6 +49,14 @@ function RoleBadge({ role }: { role: string }) {
       <Badge className="gap-1 bg-yellow-500/15 text-yellow-700 border-yellow-400/30 hover:bg-yellow-500/15">
         <Crown className="h-3 w-3" />
         Admin
+      </Badge>
+    );
+  }
+  if (role === "sub-lead") {
+    return (
+      <Badge className="gap-1 bg-blue-500/15 text-blue-700 border-blue-400/30 hover:bg-blue-500/15">
+        <ShieldCheck className="h-3 w-3" />
+        Supervisor
       </Badge>
     );
   }
@@ -100,9 +110,9 @@ export function UsersClient({ users: initial, currentUserId, currentUserRole }: 
     router.refresh();
   }
 
-  // Available roles you can assign to a target
+  // Available roles you can assign to a target (only super-admin can manage)
   function assignableRoles(targetRole: string): string[] {
-    const all = ["member", "admin", "super-admin"];
+    const all = ["admin", "sub-lead", "super-admin"];
     return all.filter(
       (r) => roleRank(r) < myRank && r !== targetRole
     );
@@ -217,7 +227,7 @@ function InviteForm({
   currentUserRole: string;
 }) {
   const isSuperAdmin = currentUserRole === "super-admin";
-  const [form, setForm] = useState({ name: "", email: "", role: "member", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", role: "admin", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
@@ -309,6 +319,7 @@ function InviteForm({
           onChange={(e) => set("role", e.target.value)}
         >
           <option value="admin">User</option>
+          {isSuperAdmin && <option value="sub-lead">Supervisor</option>}
           {isSuperAdmin && <option value="super-admin">Admin</option>}
         </select>
       </div>

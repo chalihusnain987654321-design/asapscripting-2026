@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { connectDB, ExecutionLog, User } from "@/lib/mongodb";
-import { LogsPageClient, type LogRow, type UserTab } from "./logs-client";
+import { connectDB, ExecutionLog, User, Group } from "@/lib/mongodb";
+import { LogsPageClient, type LogRow, type UserTab, type GroupTab } from "./logs-client";
 
 const PAGE_SIZE = 15;
 
@@ -18,10 +18,35 @@ export default async function LogsPage({
   searchParams: Record<string, string>;
 }) {
   const session = await getServerSession(authOptions);
+  const role = session!.user.role;
+  const myId = session!.user.id;
 
   await connectDB();
 
-  const rawUsers = await User.find({ isActive: true }).sort({ name: 1 }).lean();
+  // Determine which user IDs this viewer can see
+  let visibleUserIds: string[] | null = null; // null = all users (super-admin)
+
+  if (role === "sub-lead") {
+    // Find the group this sub-lead leads
+    const group = await Group.findOne({ leadUserId: myId }).lean();
+    const memberIds = group ? group.memberUserIds.map((id) => id.toString()) : [];
+    // Sub-lead sees their own logs + all group members
+    visibleUserIds = [myId, ...memberIds];
+  } else if (role === "admin") {
+    // Regular user sees only their own logs
+    visibleUserIds = [myId];
+  }
+
+  // Build user list for filter dropdown
+  let rawUsers;
+  if (visibleUserIds === null) {
+    rawUsers = await User.find({ isActive: true }).sort({ name: 1 }).lean();
+  } else {
+    rawUsers = await User.find({ _id: { $in: visibleUserIds }, isActive: true })
+      .sort({ name: 1 })
+      .lean();
+  }
+
   const users: UserTab[] = rawUsers.map((u) => ({
     id: u._id.toString(),
     name: u.name,
@@ -29,14 +54,39 @@ export default async function LogsPage({
     role: u.role,
   }));
 
-  // "" = all users (overall view); specific id = filter by user
   const selectedUserId = searchParams.userId ?? "";
+  const selectedTeamId = searchParams.teamId ?? "";
   const from = searchParams.from ?? yesterdayStr();
   const to = searchParams.to ?? yesterdayStr();
   const page = Math.max(1, parseInt(searchParams.page ?? "1", 10));
 
+  // Fetch groups for super-admin team filter
+  let groups: GroupTab[] = [];
+  if (role === "super-admin") {
+    const rawGroups = await Group.find({}).sort({ name: 1 }).lean();
+    groups = rawGroups.map((g) => ({
+      id: g._id.toString(),
+      name: g.name,
+      memberUserIds: [g.leadUserId.toString(), ...g.memberUserIds.map((id) => id.toString())],
+    }));
+  }
+
   const filter: Record<string, unknown> = {};
-  if (selectedUserId) filter.userId = selectedUserId;
+
+  // Enforce visibility scope
+  if (visibleUserIds !== null) {
+    if (selectedUserId && visibleUserIds.includes(selectedUserId)) {
+      filter.userId = selectedUserId;
+    } else {
+      filter.userId = { $in: visibleUserIds };
+    }
+  } else if (selectedTeamId) {
+    // Super-admin filtered by team
+    const team = groups.find((g) => g.id === selectedTeamId);
+    if (team) filter.userId = { $in: team.memberUserIds };
+  } else if (selectedUserId) {
+    filter.userId = selectedUserId;
+  }
 
   if (from || to) {
     const dateFilter: Record<string, Date> = {};
@@ -78,6 +128,8 @@ export default async function LogsPage({
       <LogsPageClient
         users={users}
         selectedUserId={selectedUserId}
+        selectedTeamId={selectedTeamId}
+        groups={groups}
         logs={logs}
         stats={{ total, success: successCount, error: errorCount }}
         from={from}
@@ -85,7 +137,8 @@ export default async function LogsPage({
         page={page}
         total={total}
         pageSize={PAGE_SIZE}
-        currentAdminId={session!.user.id}
+        currentAdminId={myId}
+        viewerRole={role}
       />
     </Suspense>
   );

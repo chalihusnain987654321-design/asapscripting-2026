@@ -9,10 +9,10 @@ function isPrivileged(role?: string) {
   return role === "admin" || role === "super-admin";
 }
 
-// GET /api/users — list all users (admin or super-admin)
+// GET /api/users — list all users (super-admin only)
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!isPrivileged(session?.user.role)) {
+  if (session?.user.role !== "super-admin") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -46,12 +46,12 @@ export async function POST(req: Request) {
     return Response.json({ error: "Name, email, and password are required." }, { status: 400 });
   }
 
-  // Admins can only create members
-  const validRoles =
-    session!.user.role === "super-admin"
-      ? ["admin", "super-admin"]
-      : ["admin"];
+  // Only super-admin can create users (and assign any role below super-admin)
+  if (session!.user.role !== "super-admin") {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
 
+  const validRoles = ["admin", "sub-lead", "super-admin"];
   const assignedRole = validRoles.includes(role) ? role : "admin";
 
   await connectDB();

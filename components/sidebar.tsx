@@ -20,25 +20,28 @@ const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard, minRole: "admin" },
   { href: "/scripts", label: "Scripts", icon: Play, minRole: "admin" },
   { href: "/backlinks", label: "Backlinks", icon: Link2, minRole: "admin" },
-  { href: "/logs", label: "Logs", icon: ScrollText, minRole: "super-admin" },
+  { href: "/logs", label: "Logs", icon: ScrollText, minRole: "admin" },
   { href: "/users", label: "Users", icon: Users, minRole: "super-admin" },
   { href: "/settings", label: "Settings", icon: Settings, minRole: "super-admin" },
 ];
 
 function roleRank(role?: string): number {
   if (role === "super-admin") return 3;
-  if (role === "admin") return 2;
-  return 1;
+  if (role === "sub-lead") return 2;
+  if (role === "admin") return 1;
+  return 0;
 }
 
 function minRoleRank(minRole: string): number {
   if (minRole === "super-admin") return 3;
-  if (minRole === "admin") return 2;
-  return 1;
+  if (minRole === "sub-lead") return 2;
+  if (minRole === "admin") return 1;
+  return 0;
 }
 
 function roleBadgeLabel(role?: string) {
   if (role === "super-admin") return "Admin";
+  if (role === "sub-lead") return "Supervisor";
   return "User";
 }
 

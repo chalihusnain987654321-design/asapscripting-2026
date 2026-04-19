@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Plus, Loader2, ShieldAlert, KeyRound } from "lucide-react";
+import { Trash2, Plus, Loader2, ShieldAlert, KeyRound, Users, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,10 +13,21 @@ interface ServiceAccount { name: string }
 interface GscProperty { url: string; displayName: string }
 interface Ga4Property { propertyId: string; displayName: string }
 
+export interface UserOption { id: string; name: string; email: string; role: string }
+export interface GroupData {
+  id: string;
+  name: string;
+  leadUserId: string;
+  memberUserIds: string[];
+}
+
 interface SettingsClientProps {
   serviceAccounts: ServiceAccount[];
   gscProperties: GscProperty[];
   ga4Properties: Ga4Property[];
+  users: UserOption[];
+  groups: GroupData[];
+  userMap: Record<string, UserOption>;
 }
 
 export function SettingsClient(props: SettingsClientProps) {
@@ -25,6 +36,7 @@ export function SettingsClient(props: SettingsClientProps) {
       <ServiceAccountsCard initial={props.serviceAccounts} />
       <GscPropertiesCard initial={props.gscProperties} />
       <Ga4PropertiesCard initial={props.ga4Properties} />
+      <GroupsCard initialGroups={props.groups} users={props.users} userMap={props.userMap} />
     </div>
   );
 }
@@ -227,6 +239,210 @@ function GscPropertiesCard({ initial }: { initial: GscProperty[] }) {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ─── Groups ───────────────────────────────────────────────────────────────────
+
+function GroupsCard({
+  initialGroups,
+  users,
+  userMap,
+}: {
+  initialGroups: GroupData[];
+  users: UserOption[];
+  userMap: Record<string, UserOption>;
+}) {
+  const router = useRouter();
+  const [groups, setGroups] = useState(initialGroups);
+  const [newName, setNewName] = useState("");
+  const [newLeadId, setNewLeadId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [localUserMap] = useState(userMap);
+
+  const subLeads = users.filter((u) => u.role === "sub-lead"); // "sub-lead" is stored as-is in DB, shown as "Supervisor"
+  const regularUsers = users.filter((u) => u.role === "admin");
+
+  async function createGroup(e: React.FormEvent) {
+    e.preventDefault();
+    setError(""); setSaving(true);
+    const res = await fetch("/api/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName, leadUserId: newLeadId }),
+    });
+    setSaving(false);
+    if (!res.ok) { setError((await res.json()).error); return; }
+    setNewName(""); setNewLeadId("");
+    router.refresh();
+    // Refetch groups
+    const gr = await fetch("/api/groups");
+    if (gr.ok) setGroups(await gr.json().then(mapGroups));
+  }
+
+  function mapGroups(data: { id: string; name: string; lead: { id: string } | null; members: { id: string }[] }[]): GroupData[] {
+    return data.map((g) => ({
+      id: g.id,
+      name: g.name,
+      leadUserId: g.lead?.id ?? "",
+      memberUserIds: g.members.map((m) => m.id),
+    }));
+  }
+
+  async function deleteGroup(id: string, name: string) {
+    if (!confirm(`Delete group "${name}"?`)) return;
+    const res = await fetch(`/api/groups/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setGroups((prev) => prev.filter((g) => g.id !== id));
+      router.refresh();
+    }
+  }
+
+  async function toggleMember(group: GroupData, userId: string) {
+    const currentIds = group.memberUserIds;
+    const updated = currentIds.includes(userId)
+      ? currentIds.filter((id) => id !== userId)
+      : [...currentIds, userId];
+
+    const res = await fetch(`/api/groups/${group.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberUserIds: updated }),
+    });
+    if (res.ok) {
+      setGroups((prev) =>
+        prev.map((g) => g.id === group.id ? { ...g, memberUserIds: updated } : g)
+      );
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold">Team Groups</h3>
+          <p className="text-sm text-muted-foreground">
+            Assign supervisors to groups. Each supervisor can view their group members' activity.
+          </p>
+        </div>
+        <Badge variant={groups.length > 0 ? "success" : "outline"}>
+          {groups.length} {groups.length === 1 ? "group" : "groups"}
+        </Badge>
+      </div>
+
+      {/* Existing groups */}
+      {groups.length > 0 && (
+        <div className="space-y-2">
+          {groups.map((group) => {
+            const lead = localUserMap[group.leadUserId];
+            const isExpanded = expandedId === group.id;
+            return (
+              <div key={group.id} className="rounded-md border overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{group.name}</span>
+                    <span className="text-muted-foreground text-xs">
+                      Supervisor: {lead?.name ?? "Unknown"}
+                    </span>
+                    <Badge variant="outline" className="text-xs">
+                      {group.memberUserIds.length} member{group.memberUserIds.length !== 1 ? "s" : ""}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost" size="sm"
+                      onClick={() => setExpandedId(isExpanded ? null : group.id)}
+                    >
+                      {isExpanded
+                        ? <ChevronUp className="h-3.5 w-3.5" />
+                        : <ChevronDown className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => deleteGroup(group.id, group.name)}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="px-3 py-3 border-t space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Assign / remove members
+                    </p>
+                    {regularUsers.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No regular users found.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {regularUsers.map((u) => {
+                          const isMember = group.memberUserIds.includes(u.id);
+                          return (
+                            <button
+                              key={u.id}
+                              onClick={() => toggleMember(group, u.id)}
+                              className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs text-left transition-colors ${
+                                isMember
+                                  ? "border-primary/50 bg-primary/5 text-primary"
+                                  : "hover:bg-muted/50"
+                              }`}
+                            >
+                              <div className={`h-2 w-2 rounded-full flex-shrink-0 ${isMember ? "bg-primary" : "bg-muted-foreground/30"}`} />
+                              {u.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create group form */}
+      <form onSubmit={createGroup} className="space-y-3 pt-2 border-t">
+        <p className="text-sm font-medium pt-1">Create a new group</p>
+        <div className="flex gap-2">
+          <div className="flex-1 space-y-1">
+            <Label className="text-xs">Group name</Label>
+            <Input
+              placeholder="e.g. SEO Team A"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex-1 space-y-1">
+            <Label className="text-xs">Supervisor</Label>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={newLeadId}
+              onChange={(e) => setNewLeadId(e.target.value)}
+              required
+            >
+              <option value="">Select supervisor…</option>
+              {subLeads.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {subLeads.length === 0 && (
+          <p className="text-xs text-yellow-600">
+            No supervisors found. Go to Users to assign the Supervisor role first.
+          </p>
+        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button type="submit" size="sm" disabled={saving || !newName.trim() || !newLeadId}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          <Plus className="h-4 w-4" />
+          Create group
+        </Button>
+      </form>
     </div>
   );
 }

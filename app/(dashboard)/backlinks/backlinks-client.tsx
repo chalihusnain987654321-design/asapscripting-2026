@@ -37,6 +37,12 @@ export interface TeamMember {
   name: string;
 }
 
+export interface GroupOption {
+  id: string;
+  name: string;
+  memberUserIds: string[];
+}
+
 interface BacklinksClientProps {
   rows: BacklinkRow[];
   total: number;
@@ -44,10 +50,14 @@ interface BacklinksClientProps {
   page: number;
   pageSize: number;
   isSuperAdmin: boolean;
+  isSupervisor: boolean;
   currentUserId: string;
   teamMembers: TeamMember[];
   memberCounts: Record<string, number>;
   selectedTab: string;
+  groups: GroupOption[];
+  groupCounts: Record<string, number>;
+  selectedTeamId: string;
   filters: { type: string; status: string; from: string; to: string };
 }
 
@@ -78,10 +88,14 @@ export function BacklinksClient({
   page,
   pageSize,
   isSuperAdmin,
+  isSupervisor,
   currentUserId,
   teamMembers,
   memberCounts,
   selectedTab,
+  groups,
+  groupCounts,
+  selectedTeamId,
   filters,
 }: BacklinksClientProps) {
   const router = useRouter();
@@ -96,8 +110,11 @@ export function BacklinksClient({
   const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
 
+  const canViewTeam = isSuperAdmin || isSupervisor;
   const totalPages = Math.ceil(total / pageSize);
-  const isAllTab = isSuperAdmin && selectedTab === "";
+  const isAllTab = canViewTeam && selectedTab === "" && selectedTeamId === "";
+  const isTeamTab = isSuperAdmin && selectedTeamId !== "";
+  const selectedGroup = groups.find((g) => g.id === selectedTeamId);
   const totalMemberBacklinks = Object.values(memberCounts).reduce((a, b) => a + b, 0);
 
   function navigate(params: Record<string, string | undefined>) {
@@ -116,7 +133,16 @@ export function BacklinksClient({
   function switchTab(tabValue: string) {
     const p = new URLSearchParams();
     if (tabValue) p.set("tab", tabValue);
-    // keep filters when switching tabs
+    if (filters.type) p.set("type", filters.type);
+    if (filters.status) p.set("status", filters.status);
+    if (filters.from) p.set("from", filters.from);
+    if (filters.to) p.set("to", filters.to);
+    router.push(`/backlinks?${p.toString()}`);
+  }
+
+  function switchTeam(teamId: string) {
+    const p = new URLSearchParams();
+    if (teamId) p.set("teamId", teamId);
     if (filters.type) p.set("type", filters.type);
     if (filters.status) p.set("status", filters.status);
     if (filters.from) p.set("from", filters.from);
@@ -166,10 +192,12 @@ export function BacklinksClient({
           <p className="text-sm text-muted-foreground mt-0.5">
             {isSuperAdmin
               ? `${totalMemberBacklinks} backlinks across ${teamMembers.length} team members`
+              : isSupervisor
+              ? `Viewing your group's backlinks`
               : "Your backlink history"}
           </p>
         </div>
-        {/* Only users (non-admins) can add backlinks */}
+        {/* Admins view only; supervisors and regular users can add */}
         {!isSuperAdmin && (
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -178,8 +206,8 @@ export function BacklinksClient({
         )}
       </div>
 
-      {/* ── Admin member selector dropdown ── */}
-      {isSuperAdmin && (
+      {/* ── Member selector dropdown (super-admin + supervisor) ── */}
+      {canViewTeam && teamMembers.length > 0 && (
         <div className="relative w-72">
           <label className="text-xs text-muted-foreground block mb-1.5 font-medium">Viewing backlinks for</label>
 
@@ -197,6 +225,16 @@ export function BacklinksClient({
                 <div className="flex-1 text-left">
                   <span>All Members</span>
                   <span className="ml-2 text-xs text-muted-foreground">({totalMemberBacklinks})</span>
+                </div>
+              </>
+            ) : isTeamTab && selectedGroup ? (
+              <>
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500/15 shrink-0">
+                  <Users className="h-4 w-4 text-blue-600" />
+                </div>
+                <div className="flex-1 text-left">
+                  <span>{selectedGroup.name}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">({groupCounts[selectedTeamId] ?? 0})</span>
                 </div>
               </>
             ) : (
@@ -253,6 +291,37 @@ export function BacklinksClient({
                     <span className="flex-1 text-left">All Members</span>
                     <span className="text-xs text-muted-foreground">{totalMemberBacklinks}</span>
                   </button>
+                )}
+
+                {/* Teams section — super-admin only */}
+                {!memberSearch && isSuperAdmin && groups.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide border-t mt-1">
+                      Teams
+                    </div>
+                    {groups.map((g) => (
+                      <button
+                        key={g.id}
+                        onClick={() => { switchTeam(g.id); setMemberDropdownOpen(false); }}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted/50",
+                          selectedTeamId === g.id && "bg-blue-500/5 text-blue-700 font-medium"
+                        )}
+                      >
+                        <div className={cn(
+                          "flex h-7 w-7 items-center justify-center rounded-full shrink-0",
+                          selectedTeamId === g.id ? "bg-blue-500/15" : "bg-muted"
+                        )}>
+                          <Users className={cn("h-3.5 w-3.5", selectedTeamId === g.id ? "text-blue-600" : "text-muted-foreground")} />
+                        </div>
+                        <span className="flex-1 text-left">{g.name}</span>
+                        <span className="text-xs text-muted-foreground">{groupCounts[g.id] ?? 0}</span>
+                      </button>
+                    ))}
+                    <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide border-t mt-1">
+                      Members
+                    </div>
+                  </>
                 )}
 
                 {/* Filtered members */}
@@ -518,7 +587,7 @@ function BacklinkTableRow({ row, isSuperAdmin, currentUserId, showMember, onEdit
         </td>
       )}
       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-        {new Date(row.createdAt).toLocaleDateString([], { day: "numeric", month: "short", year: "2-digit" })}
+        {new Date(row.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "Asia/Karachi" })}
       </td>
       {!isSuperAdmin && (
         <td className="px-4 py-3">

@@ -36,9 +36,17 @@ export interface UserTab {
   role: string;
 }
 
+export interface GroupTab {
+  id: string;
+  name: string;
+  memberUserIds: string[];
+}
+
 interface LogsPageClientProps {
   users: UserTab[];
   selectedUserId: string;
+  selectedTeamId: string;
+  groups: GroupTab[];
   logs: LogRow[];
   stats: { total: number; success: number; error: number };
   from: string;
@@ -47,6 +55,7 @@ interface LogsPageClientProps {
   total: number;
   pageSize: number;
   currentAdminId: string;
+  viewerRole: string;
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -109,6 +118,8 @@ function formatDisplayDate(from: string, to: string) {
 export function LogsPageClient({
   users,
   selectedUserId,
+  selectedTeamId,
+  groups,
   logs,
   stats,
   from,
@@ -117,6 +128,7 @@ export function LogsPageClient({
   total,
   pageSize,
   currentAdminId,
+  viewerRole,
 }: LogsPageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -127,8 +139,9 @@ export function LogsPageClient({
   const activePreset = detectPreset(from, to);
   const totalPages = Math.ceil(total / pageSize);
   const selectedUser = users.find((u) => u.id === selectedUserId);
+  const selectedTeam = groups.find((g) => g.id === selectedTeamId);
   const successRate = stats.total > 0 ? Math.round((stats.success / stats.total) * 100) : null;
-  const isOverall = selectedUserId === "";
+  const isOverall = selectedUserId === "" && selectedTeamId === "";
 
   function navigate(params: Record<string, string | undefined>) {
     const p = new URLSearchParams(searchParams.toString());
@@ -168,30 +181,62 @@ export function LogsPageClient({
             <CalendarDays className="h-3.5 w-3.5" />
             {formatDisplayDate(from, to)}
             <span className="text-muted-foreground/40">·</span>
-            {isOverall ? "All team members" : selectedUser?.name}
+            {viewerRole === "admin"
+              ? "My activity"
+              : isOverall
+              ? viewerRole === "sub-lead" ? "My group" : "All team members"
+              : selectedTeam
+              ? selectedTeam.name
+              : selectedUser?.name}
           </p>
         </div>
 
-        {/* User dropdown */}
-        <div className="relative">
-          <label className="text-xs text-muted-foreground block mb-1">Viewing activity for</label>
-          <div className="relative">
-            <select
-              className="h-10 pl-9 pr-8 rounded-xl border border-input bg-card text-sm font-medium appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-sm cursor-pointer min-w-[200px]"
-              value={selectedUserId}
-              onChange={(e) => navigate({ userId: e.target.value || undefined })}
-            >
-              <option value="">All Members (Overall)</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}{u.id === currentAdminId ? " (you)" : ""}
-                </option>
-              ))}
-            </select>
-            <Users className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        {/* Filters — hidden for regular users */}
+        {viewerRole !== "admin" && (
+          <div className="flex items-end gap-2 flex-wrap">
+            {/* Team dropdown — super-admin only */}
+            {viewerRole === "super-admin" && groups.length > 0 && (
+              <div className="relative">
+                <label className="text-xs text-muted-foreground block mb-1">Filter by team</label>
+                <div className="relative">
+                  <select
+                    className="h-10 pl-9 pr-8 rounded-xl border border-input bg-card text-sm font-medium appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-sm cursor-pointer min-w-[170px]"
+                    value={selectedTeamId}
+                    onChange={(e) => navigate({ teamId: e.target.value || undefined, userId: undefined })}
+                  >
+                    <option value="">All Teams</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                  <Activity className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+              </div>
+            )}
+
+            {/* User dropdown */}
+            <div className="relative">
+              <label className="text-xs text-muted-foreground block mb-1">Viewing activity for</label>
+              <div className="relative">
+                <select
+                  className="h-10 pl-9 pr-8 rounded-xl border border-input bg-card text-sm font-medium appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-sm cursor-pointer min-w-[200px]"
+                  value={selectedUserId}
+                  onChange={(e) => navigate({ userId: e.target.value || undefined, teamId: undefined })}
+                >
+                  <option value="">{viewerRole === "sub-lead" ? "My Group (Overall)" : "All Members (Overall)"}</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}{u.id === currentAdminId ? " (you)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <Users className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── Filters bar ── */}
@@ -366,7 +411,7 @@ function LogTableRow({ log, showUser }: { log: LogRow; showUser: boolean }) {
               <div className="flex items-center gap-3 pt-1 text-sm text-muted-foreground flex-wrap">
                 <StatusBadge status={log.status} />
                 <span>{log.userName}</span>
-                <span>{new Date(log.startedAt).toLocaleString()}</span>
+                <span>{new Date(log.startedAt).toLocaleString("en-PK", { timeZone: PKT, hour12: true })}</span>
                 {log.durationMs != null && <span>{formatDuration(log.durationMs)}</span>}
               </div>
             </DialogHeader>
@@ -408,14 +453,17 @@ function formatDuration(ms: number): string {
   return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
 }
 
+const PKT = "Asia/Karachi";
+
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
-  const sameDay = (a: Date, b: Date) =>
-    a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (sameDay(d, today)) return `Today, ${time}`;
-  if (sameDay(d, yesterday)) return `Yesterday, ${time}`;
-  return `${d.toLocaleDateString([], { day: "numeric", month: "short" })}, ${time}`;
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-PK", { timeZone: PKT });
+  const dStr = d.toLocaleDateString("en-PK", { timeZone: PKT });
+  const yd = new Date(now); yd.setDate(yd.getDate() - 1);
+  const ydStr = yd.toLocaleDateString("en-PK", { timeZone: PKT });
+  const time = d.toLocaleTimeString("en-PK", { timeZone: PKT, hour: "2-digit", minute: "2-digit", hour12: true });
+  if (dStr === todayStr) return `Today, ${time}`;
+  if (dStr === ydStr) return `Yesterday, ${time}`;
+  return `${d.toLocaleDateString("en-PK", { timeZone: PKT, day: "numeric", month: "short" })}, ${time}`;
 }

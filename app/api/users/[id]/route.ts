@@ -5,8 +5,9 @@ import { connectDB, User } from "@/lib/mongodb";
 // Role rank: higher = more powerful
 function roleRank(role?: string): number {
   if (role === "super-admin") return 3;
-  if (role === "admin") return 2;
-  return 1;
+  if (role === "sub-lead") return 2;
+  if (role === "admin") return 1;
+  return 0;
 }
 
 // PATCH /api/users/[id] — update role or isActive
@@ -18,7 +19,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const session = await getServerSession(authOptions);
   const myRole = session?.user.role;
 
-  if (roleRank(myRole) < 2) {
+  if (roleRank(myRole) < 3) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -47,8 +48,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if ("role" in body) {
     const newRole = body.role as string;
     const allowedRoles = myRole === "super-admin"
-      ? ["admin", "super-admin"]
-      : ["admin"];
+      ? ["admin", "sub-lead", "super-admin"]
+      : [];
 
     if (allowedRoles.includes(newRole) && roleRank(newRole) <= roleRank(myRole)) {
       allowedFields.role = newRole;

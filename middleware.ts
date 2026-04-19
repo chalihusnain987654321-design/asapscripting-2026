@@ -6,9 +6,14 @@ export default withAuth(
     const { pathname } = req.nextUrl;
     const role = req.nextauth.token?.role as string | undefined;
 
-    // These pages: super-admin only
-    const superAdminRoutes = ["/settings", "/users", "/logs"];
+    // Settings and Users: super-admin only
+    const superAdminRoutes = ["/settings", "/users"];
     if (superAdminRoutes.some((r) => pathname.startsWith(r)) && role !== "super-admin") {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+
+    // Logs: super-admin and sub-lead can see all/group activity; admin sees own
+    if (pathname.startsWith("/logs") && !role) {
       return NextResponse.redirect(new URL("/", req.url));
     }
 
