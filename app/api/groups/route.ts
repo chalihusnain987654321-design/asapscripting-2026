@@ -26,7 +26,7 @@ export async function GET() {
     g.memberUserIds.forEach((id) => allUserIds.add(id.toString()));
   }
 
-  const users = await User.find({ _id: { $in: [...allUserIds] } })
+  const users = await User.find({ _id: { $in: Array.from(allUserIds) } })
     .select("_id name email role")
     .lean();
 
