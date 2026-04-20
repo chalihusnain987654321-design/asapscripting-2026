@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { connectDB, ContentTask, Group } from "@/lib/mongodb";
+import { connectDB, ContentTask, Group, User } from "@/lib/mongodb";
 import { ContentClient, type ContentTaskRow, type TaskType } from "./content-client";
 
 const VALID_TYPES: TaskType[] = ["landing-request", "blog-request", "landing-update", "blog-publish"];
@@ -33,12 +33,18 @@ export default async function ContentPage({
   await connectDB();
 
   const filter: Record<string, unknown> = { taskType };
+  const members: { id: string; name: string }[] = [];
 
   if (role === "sub-lead") {
     const group = await Group.findOne({ leadUserId: myId }).lean();
     const memberIds = group ? group.memberUserIds.map((id) => id.toString()) : [];
     filter.userId = { $in: [myId, ...memberIds] };
-  } else if (role !== "super-admin") {
+    const groupUsers = await User.find({ _id: { $in: [myId, ...memberIds] } }, "name").lean();
+    groupUsers.forEach((u) => members.push({ id: u._id.toString(), name: u.name }));
+  } else if (role === "super-admin") {
+    const allUsers = await User.find({}, "name").lean();
+    allUsers.forEach((u) => members.push({ id: u._id.toString(), name: u.name }));
+  } else {
     filter.userId = myId;
   }
 
@@ -69,6 +75,7 @@ export default async function ContentPage({
         pageTitle={TYPE_LABELS[taskType]}
         currentUserId={myId}
         viewerRole={role}
+        members={members}
       />
     </Suspense>
   );

@@ -44,6 +44,7 @@ interface ContentClientProps {
   pageTitle: string;
   currentUserId: string;
   viewerRole: string;
+  members: { id: string; name: string }[];
 }
 
 const PKT = "Asia/Karachi";
@@ -81,7 +82,7 @@ function formatDate(iso: string) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ContentClient({
-  tasks: initial, taskType, pageTitle, currentUserId, viewerRole,
+  tasks: initial, taskType, pageTitle, currentUserId, viewerRole, members,
 }: ContentClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initial);
@@ -92,7 +93,24 @@ export function ContentClient({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Filters
+  const [filterMember, setFilterMember] = useState("");
+  const [filterFrom,   setFilterFrom]   = useState("");
+  const [filterTo,     setFilterTo]     = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+
   const canEdit = viewerRole !== "super-admin";
+  const canSeeMembers = viewerRole !== "admin";
+
+  const filtered = tasks.filter((t) => {
+    if (filterMember && t.userId !== filterMember) return false;
+    if (filterStatus && t.status !== filterStatus)  return false;
+    if (filterFrom   && t.date.slice(0, 10) < filterFrom) return false;
+    if (filterTo     && t.date.slice(0, 10) > filterTo)   return false;
+    return true;
+  });
+
+  const isFiltering = !!(filterMember || filterStatus || filterFrom || filterTo);
 
   async function onSaved(task: ContentTaskRow, isNew: boolean) {
     if (isNew) {
@@ -117,9 +135,9 @@ export function ContentClient({
     }
   }
 
-  const pending = tasks.filter((t) => t.status === "pending").length;
-  const inProgress = tasks.filter((t) => t.status === "in-progress").length;
-  const done = tasks.filter((t) => t.status === "done").length;
+  const pending    = filtered.filter((t) => t.status === "pending").length;
+  const inProgress = filtered.filter((t) => t.status === "in-progress").length;
+  const done       = filtered.filter((t) => t.status === "done").length;
 
   return (
     <div className="space-y-5">
@@ -129,7 +147,9 @@ export function ContentClient({
         <div>
           <h2 className="text-2xl font-bold">{pageTitle}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {tasks.length} record{tasks.length !== 1 ? "s" : ""}
+            {isFiltering
+              ? `${filtered.length} of ${tasks.length} record${tasks.length !== 1 ? "s" : ""}`
+              : `${tasks.length} record${tasks.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         {canEdit && (
@@ -140,13 +160,61 @@ export function ContentClient({
         )}
       </div>
 
+      {/* ── Filters ── */}
+      <div className="flex flex-wrap gap-3 items-end">
+        {canSeeMembers && members.length > 0 && (
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Member</Label>
+            <select
+              value={filterMember}
+              onChange={(e) => setFilterMember(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">All members</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Status</Label>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in-progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">From</Label>
+          <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">To</Label>
+          <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        </div>
+        {isFiltering && (
+          <Button size="sm" variant="outline"
+            onClick={() => { setFilterMember(""); setFilterStatus(""); setFilterFrom(""); setFilterTo(""); }}>
+            Clear
+          </Button>
+        )}
+      </div>
+
       {/* ── Stats ── */}
-      {tasks.length > 0 && (
+      {filtered.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "Pending", count: pending, color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
+            { label: "Pending",     count: pending,    color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
             { label: "In Progress", count: inProgress, color: "text-blue-700 bg-blue-50 border-blue-200" },
-            { label: "Done", count: done, color: "text-green-700 bg-green-50 border-green-200" },
+            { label: "Done",        count: done,       color: "text-green-700 bg-green-50 border-green-200" },
           ].map((s) => (
             <div key={s.label} className={cn("rounded-lg border p-3 text-center", s.color)}>
               <p className="text-2xl font-bold">{s.count}</p>
@@ -158,7 +226,7 @@ export function ContentClient({
 
       {/* ── Table ── */}
       <TaskTable
-        rows={tasks}
+        rows={filtered}
         taskType={taskType}
         canEdit={canEdit}
         viewerRole={viewerRole}
