@@ -33,6 +33,7 @@ export interface ContentTaskRow {
   docsLink: string;
   pageUrls: string[];
   sheetLink: string;
+  blogTopics: string[];
   updatedPageLinks: string[];
   publishedBlogLinks: string[];
 }
@@ -391,6 +392,7 @@ function TaskForm({
   const [docsLink, setDocsLink] = useState(existing?.docsLink ?? "");
   const [pageUrlsText, setPageUrlsText] = useState((existing?.pageUrls ?? []).join("\n"));
   const [sheetLink, setSheetLink] = useState(existing?.sheetLink ?? "");
+  const [blogTopicsText, setBlogTopicsText] = useState((existing?.blogTopics ?? []).join("\n"));
   const [updatedLinksText, setUpdatedLinksText] = useState((existing?.updatedPageLinks ?? []).join("\n"));
   const [publishedLinksText, setPublishedLinksText] = useState((existing?.publishedBlogLinks ?? []).join("\n"));
   const [loading, setLoading] = useState(false);
@@ -413,6 +415,7 @@ function TaskForm({
       docsLink,
       pageUrls: parseLines(pageUrlsText),
       sheetLink,
+      blogTopics: parseLines(blogTopicsText),
       updatedPageLinks: parseLines(updatedLinksText),
       publishedBlogLinks: parseLines(publishedLinksText),
     };
@@ -447,6 +450,7 @@ function TaskForm({
       docsLink,
       pageUrls: parseLines(pageUrlsText),
       sheetLink,
+      blogTopics: parseLines(blogTopicsText),
       updatedPageLinks: parseLines(updatedLinksText),
       publishedBlogLinks: parseLines(publishedLinksText),
     };
@@ -508,11 +512,22 @@ function TaskForm({
       )}
 
       {taskType === "blog-request" && (
-        <div className="space-y-1.5">
-          <Label>Sheet Link</Label>
-          <Input placeholder="https://docs.google.com/spreadsheets/..." value={sheetLink}
-            onChange={(e) => setSheetLink(e.target.value)} />
-        </div>
+        <>
+          <div className="space-y-1.5">
+            <Label>Sheet Link</Label>
+            <Input placeholder="https://docs.google.com/spreadsheets/..." value={sheetLink}
+              onChange={(e) => setSheetLink(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Blog Topics <span className="text-muted-foreground text-xs">(one per line)</span></Label>
+            <Textarea
+              placeholder={"How to improve SEO rankings\nBest practices for content marketing\n..."}
+              className="min-h-[100px] text-xs"
+              value={blogTopicsText}
+              onChange={(e) => setBlogTopicsText(e.target.value)}
+            />
+          </div>
+        </>
       )}
 
       {taskType === "landing-update" && (

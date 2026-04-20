@@ -28,7 +28,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const body = await req.json();
-  const allowed = ["websiteName", "websiteUrl", "status", "date", "docsLink", "pageUrls", "sheetLink", "updatedPageLinks", "publishedBlogLinks"];
+  const allowed = ["websiteName", "websiteUrl", "status", "date", "docsLink", "pageUrls", "sheetLink", "blogTopics", "updatedPageLinks", "publishedBlogLinks"];
 
   for (const key of allowed) {
     if (key in body) {

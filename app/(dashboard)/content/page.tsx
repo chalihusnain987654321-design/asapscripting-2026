@@ -56,6 +56,7 @@ export default async function ContentPage({
     docsLink: t.docsLink ?? "",
     pageUrls: t.pageUrls ?? [],
     sheetLink: t.sheetLink ?? "",
+    blogTopics: t.blogTopics ?? [],
     updatedPageLinks: t.updatedPageLinks ?? [],
     publishedBlogLinks: t.publishedBlogLinks ?? [],
   }));

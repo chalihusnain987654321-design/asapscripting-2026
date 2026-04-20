@@ -21,6 +21,7 @@ export interface IContentTask extends Document {
   pageUrls?: string[];
   // blog-request
   sheetLink?: string;
+  blogTopics?: string[];
   // landing-update
   updatedPageLinks?: string[];
   // blog-publish
@@ -50,6 +51,7 @@ const ContentTaskSchema = new Schema<IContentTask>(
     docsLink: { type: String },
     pageUrls: [{ type: String }],
     sheetLink: { type: String },
+    blogTopics: [{ type: String }],
     updatedPageLinks: [{ type: String }],
     publishedBlogLinks: [{ type: String }],
   },

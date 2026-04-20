@@ -45,6 +45,7 @@ export async function GET(req: Request) {
       docsLink: t.docsLink ?? "",
       pageUrls: t.pageUrls ?? [],
       sheetLink: t.sheetLink ?? "",
+      blogTopics: t.blogTopics ?? [],
       updatedPageLinks: t.updatedPageLinks ?? [],
       publishedBlogLinks: t.publishedBlogLinks ?? [],
       createdAt: t.createdAt.toISOString(),
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { taskType, websiteName, websiteUrl, status, date, docsLink, pageUrls, sheetLink, updatedPageLinks, publishedBlogLinks } = body;
+  const { taskType, websiteName, websiteUrl, status, date, docsLink, pageUrls, sheetLink, blogTopics, updatedPageLinks, publishedBlogLinks } = body;
 
   if (!taskType || !websiteName?.trim() || !websiteUrl?.trim() || !date) {
     return Response.json({ error: "Required fields missing." }, { status: 400 });
@@ -82,6 +83,7 @@ export async function POST(req: Request) {
     docsLink: docsLink?.trim() ?? "",
     pageUrls: Array.isArray(pageUrls) ? pageUrls.filter(Boolean) : [],
     sheetLink: sheetLink?.trim() ?? "",
+    blogTopics: Array.isArray(blogTopics) ? blogTopics.filter(Boolean) : [],
     updatedPageLinks: Array.isArray(updatedPageLinks) ? updatedPageLinks.filter(Boolean) : [],
     publishedBlogLinks: Array.isArray(publishedBlogLinks) ? publishedBlogLinks.filter(Boolean) : [],
   });
