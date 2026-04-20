@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
   const task = await ContentTask.create({
     userId: session.user.id,
-    userName: session.user.name,
+    userName: session.user.name ?? "",
     taskType,
     websiteName: websiteName.trim(),
     websiteUrl: websiteUrl.trim(),

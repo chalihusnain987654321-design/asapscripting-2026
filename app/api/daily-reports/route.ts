@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 
   const created = await DailyReport.create({
     userId:   session.user.id,
-    userName: session.user.name,
+    userName: session.user.name ?? "",
     date:     new Date(date),
     report:   report.trim(),
   });
