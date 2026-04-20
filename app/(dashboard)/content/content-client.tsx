@@ -42,7 +42,6 @@ interface ContentClientProps {
   tasks: ContentTaskRow[];
   taskType: TaskType;
   pageTitle: string;
-  currentUserId: string;
   viewerRole: string;
   members: { id: string; name: string }[];
 }
@@ -82,7 +81,7 @@ function formatDate(iso: string) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ContentClient({
-  tasks: initial, taskType, pageTitle, currentUserId: _currentUserId, viewerRole, members,
+  tasks: initial, taskType, pageTitle, viewerRole, members,
 }: ContentClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initial);

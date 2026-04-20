@@ -73,7 +73,6 @@ export default async function ContentPage({
         tasks={tasks}
         taskType={taskType}
         pageTitle={TYPE_LABELS[taskType]}
-        currentUserId={myId}
         viewerRole={role}
         members={members}
       />
