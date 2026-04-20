@@ -5,6 +5,7 @@ export { default as Settings } from "./models/Settings";
 export { default as Backlink } from "./models/Backlink";
 export { default as Group } from "./models/Group";
 export { default as ContentTask } from "./models/ContentTask";
+export { default as DailyReport } from "./models/DailyReport";
 export type { IUser, UserRole } from "./models/User";
 export type { IExecutionLog, ExecutionStatus } from "./models/ExecutionLog";
 export type { ISettings, IGscProperty, IGa4Property, IServiceAccount } from "./models/Settings";

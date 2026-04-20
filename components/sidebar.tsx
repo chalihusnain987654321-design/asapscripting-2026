@@ -15,6 +15,7 @@ import {
   Crown,
   Link2,
   FileText,
+  ClipboardList,
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,7 @@ const navItems: NavItem[] = [
       { href: "/content?type=blog-publish", label: "Blogs Publish" },
     ],
   },
+  { kind: "link", href: "/daily-reports", label: "Daily Reports", icon: ClipboardList, minRole: "admin" },
   { kind: "link", href: "/logs", label: "Logs", icon: ScrollText, minRole: "admin" },
   { kind: "link", href: "/users", label: "Users", icon: Users, minRole: "super-admin" },
   { kind: "link", href: "/settings", label: "Settings", icon: Settings, minRole: "super-admin" },
