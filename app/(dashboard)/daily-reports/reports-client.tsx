@@ -113,14 +113,16 @@ export function ReportsClient({ reports: initial, currentUserId, viewerRole, mem
             {reports.length} report{reports.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4" />
-          {todayReport ? "Add Another Report" : "Submit Today's Report"}
-        </Button>
+        {viewerRole !== "admin" && (
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" />
+            {todayReport ? "Add Another Report" : "Submit Today's Report"}
+          </Button>
+        )}
       </div>
 
       {/* ── Today's report banner ── */}
-      {todayReport && (
+      {todayReport && viewerRole !== "admin" && (
         <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-green-800">
             <CalendarDays className="h-4 w-4 shrink-0" />
