@@ -41,28 +41,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if ("updatedPageLinks" in body)  updates.updatedPageLinks  = body.updatedPageLinks;
   if ("publishedBlogLinks" in body) updates.publishedBlogLinks = body.publishedBlogLinks;
 
-  const updated = await ContentTask.findByIdAndUpdate(
-    params.id,
-    { $set: updates },
-    { new: true, lean: true }
-  );
-  if (!updated) return Response.json({ error: "Not found." }, { status: 404 });
+  await ContentTask.updateOne({ _id: params.id }, { $set: updates }, { strict: false });
+
+  const fresh = await ContentTask.findById(params.id).lean();
+  if (!fresh) return Response.json({ error: "Not found." }, { status: 404 });
 
   return Response.json({
-    id: updated._id.toString(),
-    userId: updated.userId,
-    userName: updated.userName,
-    taskType: updated.taskType,
-    websiteName: updated.websiteName,
-    websiteUrl: updated.websiteUrl,
-    status: updated.status,
-    date: updated.date.toISOString(),
-    docsLink: updated.docsLink ?? "",
-    pageUrls: updated.pageUrls ?? [],
-    sheetLink: updated.sheetLink ?? "",
-    blogTopics: updated.blogTopics ?? [],
-    updatedPageLinks: updated.updatedPageLinks ?? [],
-    publishedBlogLinks: updated.publishedBlogLinks ?? [],
+    id: fresh._id.toString(),
+    userId: fresh.userId,
+    userName: fresh.userName,
+    taskType: fresh.taskType,
+    websiteName: fresh.websiteName,
+    websiteUrl: fresh.websiteUrl,
+    status: fresh.status,
+    date: fresh.date.toISOString(),
+    docsLink: fresh.docsLink ?? "",
+    pageUrls: (fresh.pageUrls as string[]) ?? [],
+    sheetLink: fresh.sheetLink ?? "",
+    blogTopics: (fresh.blogTopics as string[]) ?? [],
+    updatedPageLinks: (fresh.updatedPageLinks as string[]) ?? [],
+    publishedBlogLinks: (fresh.publishedBlogLinks as string[]) ?? [],
   });
 }
 

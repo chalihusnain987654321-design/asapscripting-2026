@@ -88,5 +88,20 @@ export async function POST(req: Request) {
     publishedBlogLinks: Array.isArray(publishedBlogLinks) ? publishedBlogLinks.filter(Boolean) : [],
   });
 
-  return Response.json({ id: task._id.toString() }, { status: 201 });
+  return Response.json({
+    id: task._id.toString(),
+    userId: task.userId,
+    userName: task.userName,
+    taskType: task.taskType,
+    websiteName: task.websiteName,
+    websiteUrl: task.websiteUrl,
+    status: task.status,
+    date: task.date.toISOString(),
+    docsLink: task.docsLink ?? "",
+    pageUrls: task.pageUrls ?? [],
+    sheetLink: task.sheetLink ?? "",
+    blogTopics: task.blogTopics ?? [],
+    updatedPageLinks: task.updatedPageLinks ?? [],
+    publishedBlogLinks: task.publishedBlogLinks ?? [],
+  }, { status: 201 });
 }

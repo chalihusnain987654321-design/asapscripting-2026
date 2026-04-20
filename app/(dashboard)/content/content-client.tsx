@@ -439,26 +439,23 @@ function TaskForm({
 
     const resData = await res.json();
 
-    // For edits the API returns the full updated record from DB — use it as source of truth.
-    // For new records the API returns { id } only, so fall back to form state.
-    const saved: ContentTaskRow = existing
-      ? { ...existing, ...resData }
-      : {
-          id: resData.id,
-          userId: resData.userId ?? "",
-          userName: resData.userName ?? "",
-          taskType,
-          websiteName,
-          websiteUrl,
-          status,
-          date: new Date(date).toISOString(),
-          docsLink,
-          pageUrls: parseLines(pageUrlsText),
-          sheetLink,
-          blogTopics: parseLines(blogTopicsText),
-          updatedPageLinks: parseLines(updatedLinksText),
-          publishedBlogLinks: parseLines(publishedLinksText),
-        };
+    // Both POST and PATCH now return the full record from DB — use as source of truth.
+    const saved: ContentTaskRow = {
+      id: resData.id,
+      userId: resData.userId ?? existing?.userId ?? "",
+      userName: resData.userName ?? existing?.userName ?? "",
+      taskType: resData.taskType ?? taskType,
+      websiteName: resData.websiteName ?? websiteName,
+      websiteUrl: resData.websiteUrl ?? websiteUrl,
+      status: resData.status ?? status,
+      date: resData.date ?? new Date(date).toISOString(),
+      docsLink: resData.docsLink ?? docsLink,
+      pageUrls: resData.pageUrls ?? parseLines(pageUrlsText),
+      sheetLink: resData.sheetLink ?? sheetLink,
+      blogTopics: resData.blogTopics ?? parseLines(blogTopicsText),
+      updatedPageLinks: resData.updatedPageLinks ?? parseLines(updatedLinksText),
+      publishedBlogLinks: resData.publishedBlogLinks ?? parseLines(publishedLinksText),
+    };
 
     onSaved(saved);
   }
