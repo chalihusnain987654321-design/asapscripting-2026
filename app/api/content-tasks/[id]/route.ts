@@ -32,11 +32,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   for (const key of allowed) {
     if (key in body) {
-      if (key === "date") {
-        (task as Record<string, unknown>)[key] = new Date(body[key]);
-      } else {
-        (task as Record<string, unknown>)[key] = body[key];
-      }
+      task.set(key, key === "date" ? new Date(body[key]) : body[key]);
     }
   }
 

@@ -188,6 +188,7 @@ export function ContentClient({
           </DialogHeader>
           {editItem && (
             <TaskForm
+              key={editItem.id}
               taskType={taskType}
               existing={editItem}
               onSaved={(t) => onSaved(t, false)}
