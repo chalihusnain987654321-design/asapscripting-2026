@@ -114,19 +114,21 @@ export function Sidebar() {
     return init;
   });
 
-  // Auto-expand when navigating to a child route
+  // Auto-open active group, auto-close all others on navigation
   useEffect(() => {
-    navItems.forEach((item) => {
-      if (item.kind === "group") {
-        const anyActive = item.children.some((c) => {
-          const [childPath, childQuery] = c.href.split("?");
-          const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
-          return pathname === childPath && activeType === childType;
-        });
-        if (anyActive) {
-          setOpenGroups((prev) => ({ ...prev, [item.label]: true }));
+    setOpenGroups((prev) => {
+      const next = { ...prev };
+      navItems.forEach((item) => {
+        if (item.kind === "group") {
+          const anyActive = item.children.some((c) => {
+            const [childPath, childQuery] = c.href.split("?");
+            const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
+            return pathname === childPath && activeType === childType;
+          });
+          next[item.label] = anyActive;
         }
-      }
+      });
+      return next;
     });
   }, [pathname, activeType]);
 
@@ -196,29 +198,34 @@ export function Sidebar() {
                 )} />
               </button>
 
-              {isOpen && (
-                <div className="mt-0.5 ml-4 pl-3 border-l border-gray-700 space-y-0.5">
-                  {item.children.map((child) => {
-                    const [childPath, childQuery] = child.href.split("?");
-                    const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
-                    const isChildActive = pathname === childPath && activeType === childType;
-                    return (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={cn(
-                          "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                          isChildActive
-                            ? "bg-blue-600 text-white"
-                            : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                        )}
-                      >
-                        {child.label}
-                      </Link>
-                    );
-                  })}
+              <div className={cn(
+                "grid transition-all duration-200 ease-in-out",
+                isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+              )}>
+                <div className="overflow-hidden">
+                  <div className="mt-0.5 ml-4 pl-3 border-l border-gray-700 space-y-0.5 pb-0.5">
+                    {item.children.map((child) => {
+                      const [childPath, childQuery] = child.href.split("?");
+                      const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
+                      const isChildActive = pathname === childPath && activeType === childType;
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={cn(
+                            "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                            isChildActive
+                              ? "bg-blue-600 text-white"
+                              : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                          )}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           );
         })}
