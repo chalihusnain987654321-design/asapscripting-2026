@@ -439,22 +439,26 @@ function TaskForm({
 
     const resData = await res.json();
 
-    const saved: ContentTaskRow = {
-      id: existing?.id ?? resData.id,
-      userId: existing?.userId ?? "",
-      userName: existing?.userName ?? "",
-      taskType,
-      websiteName,
-      websiteUrl,
-      status,
-      date: new Date(date).toISOString(),
-      docsLink,
-      pageUrls: parseLines(pageUrlsText),
-      sheetLink,
-      blogTopics: parseLines(blogTopicsText),
-      updatedPageLinks: parseLines(updatedLinksText),
-      publishedBlogLinks: parseLines(publishedLinksText),
-    };
+    // For edits the API returns the full updated record from DB — use it as source of truth.
+    // For new records the API returns { id } only, so fall back to form state.
+    const saved: ContentTaskRow = existing
+      ? { ...existing, ...resData }
+      : {
+          id: resData.id,
+          userId: resData.userId ?? "",
+          userName: resData.userName ?? "",
+          taskType,
+          websiteName,
+          websiteUrl,
+          status,
+          date: new Date(date).toISOString(),
+          docsLink,
+          pageUrls: parseLines(pageUrlsText),
+          sheetLink,
+          blogTopics: parseLines(blogTopicsText),
+          updatedPageLinks: parseLines(updatedLinksText),
+          publishedBlogLinks: parseLines(publishedLinksText),
+        };
 
     onSaved(saved);
   }
