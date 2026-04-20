@@ -13,6 +13,7 @@ import {
   Globe,
   Crown,
   Link2,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard, minRole: "admin" },
   { href: "/scripts", label: "Scripts", icon: Play, minRole: "admin" },
   { href: "/backlinks", label: "Backlinks", icon: Link2, minRole: "admin" },
+  { href: "/content", label: "Content Tasks", icon: FileText, minRole: "admin" },
   { href: "/logs", label: "Logs", icon: ScrollText, minRole: "admin" },
   { href: "/users", label: "Users", icon: Users, minRole: "super-admin" },
   { href: "/settings", label: "Settings", icon: Settings, minRole: "super-admin" },
