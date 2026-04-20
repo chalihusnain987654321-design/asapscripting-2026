@@ -82,7 +82,7 @@ function formatDate(iso: string) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ContentClient({
-  tasks: initial, taskType, pageTitle, currentUserId, viewerRole, members,
+  tasks: initial, taskType, pageTitle, currentUserId: _currentUserId, viewerRole, members,
 }: ContentClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initial);
