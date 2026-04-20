@@ -39,6 +39,8 @@ export interface ContentTaskRow {
 
 interface ContentClientProps {
   tasks: ContentTaskRow[];
+  taskType: TaskType;
+  pageTitle: string;
   currentUserId: string;
   viewerRole: string;
 }
@@ -77,22 +79,18 @@ function formatDate(iso: string) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ContentClient({ tasks: initial, currentUserId, viewerRole }: ContentClientProps) {
+export function ContentClient({
+  tasks: initial, taskType, pageTitle, currentUserId, viewerRole,
+}: ContentClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initial);
   useEffect(() => { setTasks(initial); }, [initial]);
-
-  const [mainTab, setMainTab] = useState<"request" | "update">("request");
-  const [requestTab, setRequestTab] = useState<"landing-request" | "blog-request">("landing-request");
-  const [updateTab, setUpdateTab] = useState<"landing-update" | "blog-publish">("landing-update");
 
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<ContentTaskRow | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const activeType: TaskType = mainTab === "request" ? requestTab : updateTab;
-  const filtered = tasks.filter((t) => t.taskType === activeType);
   const canEdit = viewerRole !== "super-admin";
 
   async function onSaved(task: ContentTaskRow, isNew: boolean) {
@@ -118,15 +116,19 @@ export function ContentClient({ tasks: initial, currentUserId, viewerRole }: Con
     }
   }
 
+  const pending = tasks.filter((t) => t.status === "pending").length;
+  const inProgress = tasks.filter((t) => t.status === "in-progress").length;
+  const done = tasks.filter((t) => t.status === "done").length;
+
   return (
     <div className="space-y-5">
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Content Tasks</h2>
+          <h2 className="text-2xl font-bold">{pageTitle}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Track content requests and updates for your websites.
+            {tasks.length} record{tasks.length !== 1 ? "s" : ""}
           </p>
         </div>
         {canEdit && (
@@ -137,67 +139,26 @@ export function ContentClient({ tasks: initial, currentUserId, viewerRole }: Con
         )}
       </div>
 
-      {/* ── Main Tabs ── */}
-      <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
-        {(["request", "update"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setMainTab(tab)}
-            className={cn(
-              "px-5 py-2 rounded-lg text-sm font-medium transition-all",
-              mainTab === tab
-                ? "bg-background shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {tab === "request" ? "Content Request" : "Content Update"}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Inner Tabs ── */}
-      <div className="flex gap-2 border-b">
-        {mainTab === "request" ? (
-          <>
-            {(["landing-request", "blog-request"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setRequestTab(tab)}
-                className={cn(
-                  "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-                  requestTab === tab
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab === "landing-request" ? "Landing Pages Request" : "Blogs Request"}
-              </button>
-            ))}
-          </>
-        ) : (
-          <>
-            {(["landing-update", "blog-publish"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setUpdateTab(tab)}
-                className={cn(
-                  "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-                  updateTab === tab
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab === "landing-update" ? "Landing Pages Update" : "Blogs Publish"}
-              </button>
-            ))}
-          </>
-        )}
-      </div>
+      {/* ── Stats ── */}
+      {tasks.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Pending", count: pending, color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
+            { label: "In Progress", count: inProgress, color: "text-blue-700 bg-blue-50 border-blue-200" },
+            { label: "Done", count: done, color: "text-green-700 bg-green-50 border-green-200" },
+          ].map((s) => (
+            <div key={s.label} className={cn("rounded-lg border p-3 text-center", s.color)}>
+              <p className="text-2xl font-bold">{s.count}</p>
+              <p className="text-xs font-medium mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Table ── */}
       <TaskTable
-        rows={filtered}
-        taskType={activeType}
+        rows={tasks}
+        taskType={taskType}
         canEdit={canEdit}
         viewerRole={viewerRole}
         onEdit={setEditItem}
@@ -208,10 +169,10 @@ export function ContentClient({ tasks: initial, currentUserId, viewerRole }: Con
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Record</DialogTitle>
+            <DialogTitle>Add Record — {pageTitle}</DialogTitle>
           </DialogHeader>
           <TaskForm
-            taskType={activeType}
+            taskType={taskType}
             onSaved={(t) => onSaved(t, true)}
             onCancel={() => setAddOpen(false)}
           />
@@ -226,7 +187,7 @@ export function ContentClient({ tasks: initial, currentUserId, viewerRole }: Con
           </DialogHeader>
           {editItem && (
             <TaskForm
-              taskType={activeType}
+              taskType={taskType}
               existing={editItem}
               onSaved={(t) => onSaved(t, false)}
               onCancel={() => setEditItem(null)}
@@ -270,7 +231,7 @@ function TaskTable({
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border bg-card p-12 text-center">
-        <p className="text-muted-foreground text-sm">No records yet.</p>
+        <p className="text-muted-foreground text-sm">No records yet. Click &quot;Add Record&quot; to get started.</p>
       </div>
     );
   }
@@ -322,17 +283,18 @@ function TaskRow({
 }) {
   const [linksOpen, setLinksOpen] = useState(false);
 
-  const links = taskType === "landing-request"
-    ? row.pageUrls
-    : taskType === "landing-update"
-    ? row.updatedPageLinks
-    : row.publishedBlogLinks;
+  const links =
+    taskType === "landing-request" ? row.pageUrls :
+    taskType === "landing-update" ? row.updatedPageLinks :
+    taskType === "blog-publish" ? row.publishedBlogLinks : [];
 
-  const mainLink = taskType === "landing-request"
-    ? row.docsLink
-    : taskType === "blog-request"
-    ? row.sheetLink
-    : null;
+  const mainLink =
+    taskType === "landing-request" ? row.docsLink :
+    taskType === "blog-request" ? row.sheetLink : null;
+
+  const mainLinkLabel =
+    taskType === "landing-request" ? "Docs" :
+    taskType === "blog-request" ? "Sheet" : null;
 
   return (
     <tr className="hover:bg-muted/30 transition-colors">
@@ -351,7 +313,7 @@ function TaskRow({
           <p className="font-medium">{row.websiteName}</p>
           <a href={row.websiteUrl} target="_blank" rel="noopener noreferrer"
             className="text-xs text-muted-foreground hover:text-primary flex items-center gap-0.5 w-fit">
-            {row.websiteUrl.replace(/^https?:\/\//, "").slice(0, 30)}
+            {row.websiteUrl.replace(/^https?:\/\//, "").slice(0, 35)}
             <ExternalLink className="h-3 w-3" />
           </a>
         </div>
@@ -364,31 +326,33 @@ function TaskRow({
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1">
-          {mainLink && (
+          {mainLink && mainLinkLabel && (
             <a href={mainLink} target="_blank" rel="noopener noreferrer"
               className="text-xs text-primary hover:underline flex items-center gap-1">
-              {taskType === "landing-request" ? "Docs" : "Sheet"}
+              {mainLinkLabel}
               <ExternalLink className="h-3 w-3" />
             </a>
           )}
           {links.length > 0 && (
-            <button
-              onClick={() => setLinksOpen((v) => !v)}
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-            >
-              {links.length} page{links.length !== 1 ? "s" : ""}
-              <ChevronDown className={cn("h-3 w-3 transition-transform", linksOpen && "rotate-180")} />
-            </button>
-          )}
-          {linksOpen && (
-            <div className="space-y-0.5 mt-1">
-              {links.map((url, i) => (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                  className="block text-xs text-primary hover:underline truncate max-w-[200px]">
-                  {url.replace(/^https?:\/\//, "")}
-                </a>
-              ))}
-            </div>
+            <>
+              <button
+                onClick={() => setLinksOpen((v) => !v)}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                {links.length} page{links.length !== 1 ? "s" : ""}
+                <ChevronDown className={cn("h-3 w-3 transition-transform", linksOpen && "rotate-180")} />
+              </button>
+              {linksOpen && (
+                <div className="space-y-0.5 mt-1">
+                  {links.map((url, i) => (
+                    <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                      className="block text-xs text-primary hover:underline truncate max-w-[200px]">
+                      {url.replace(/^https?:\/\//, "")}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </td>
@@ -411,10 +375,7 @@ function TaskRow({
 // ─── Task Form ────────────────────────────────────────────────────────────────
 
 function TaskForm({
-  taskType,
-  existing,
-  onSaved,
-  onCancel,
+  taskType, existing, onSaved, onCancel,
 }: {
   taskType: TaskType;
   existing?: ContentTaskRow;
@@ -472,9 +433,10 @@ function TaskForm({
       return;
     }
 
-    // Build updated row
+    const resData = await res.json();
+
     const saved: ContentTaskRow = {
-      id: existing?.id ?? (await res.json()).id,
+      id: existing?.id ?? resData.id,
       userId: existing?.userId ?? "",
       userName: existing?.userName ?? "",
       taskType,
@@ -494,7 +456,6 @@ function TaskForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Common fields */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>Website Name</Label>
@@ -527,7 +488,6 @@ function TaskForm({
         </div>
       </div>
 
-      {/* Type-specific fields */}
       {taskType === "landing-request" && (
         <>
           <div className="space-y-1.5">

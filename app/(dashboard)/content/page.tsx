@@ -1,17 +1,38 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB, ContentTask, Group } from "@/lib/mongodb";
-import { ContentClient, type ContentTaskRow } from "./content-client";
+import { ContentClient, type ContentTaskRow, type TaskType } from "./content-client";
 
-export default async function ContentPage() {
+const VALID_TYPES: TaskType[] = ["landing-request", "blog-request", "landing-update", "blog-publish"];
+
+const TYPE_LABELS: Record<TaskType, string> = {
+  "landing-request": "Landing Pages Request",
+  "blog-request": "Blogs Request",
+  "landing-update": "Landing Pages Update",
+  "blog-publish": "Blogs Publish",
+};
+
+export default async function ContentPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string>;
+}) {
+  const taskType = searchParams.type as TaskType;
+
+  // Default redirect to first sub-task
+  if (!VALID_TYPES.includes(taskType)) {
+    redirect("/content?type=landing-request");
+  }
+
   const session = await getServerSession(authOptions);
   const role = session!.user.role;
   const myId = session!.user.id;
 
   await connectDB();
 
-  const filter: Record<string, unknown> = {};
+  const filter: Record<string, unknown> = { taskType };
 
   if (role === "sub-lead") {
     const group = await Group.findOne({ leadUserId: myId }).lean();
@@ -27,7 +48,7 @@ export default async function ContentPage() {
     id: t._id.toString(),
     userId: t.userId,
     userName: t.userName,
-    taskType: t.taskType as ContentTaskRow["taskType"],
+    taskType: t.taskType as TaskType,
     websiteName: t.websiteName,
     websiteUrl: t.websiteUrl,
     status: t.status as ContentTaskRow["status"],
@@ -43,6 +64,8 @@ export default async function ContentPage() {
     <Suspense>
       <ContentClient
         tasks={tasks}
+        taskType={taskType}
+        pageTitle={TYPE_LABELS[taskType]}
         currentUserId={myId}
         viewerRole={role}
       />

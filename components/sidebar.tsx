@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Play,
@@ -14,18 +15,55 @@ import {
   Crown,
   Link2,
   FileText,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { href: "/", label: "Overview", icon: LayoutDashboard, minRole: "admin" },
-  { href: "/scripts", label: "Scripts", icon: Play, minRole: "admin" },
-  { href: "/backlinks", label: "Backlinks", icon: Link2, minRole: "admin" },
-  { href: "/content", label: "Content Tasks", icon: FileText, minRole: "admin" },
-  { href: "/logs", label: "Logs", icon: ScrollText, minRole: "admin" },
-  { href: "/users", label: "Users", icon: Users, minRole: "super-admin" },
-  { href: "/settings", label: "Settings", icon: Settings, minRole: "super-admin" },
+// ─── Nav config ───────────────────────────────────────────────────────────────
+
+type NavItem =
+  | { kind: "link"; href: string; label: string; icon: React.ElementType; minRole: string }
+  | {
+      kind: "group";
+      label: string;
+      icon: React.ElementType;
+      minRole: string;
+      basePath: string;
+      children: { href: string; label: string }[];
+    };
+
+const navItems: NavItem[] = [
+  { kind: "link", href: "/", label: "Overview", icon: LayoutDashboard, minRole: "admin" },
+  { kind: "link", href: "/scripts", label: "Scripts", icon: Play, minRole: "admin" },
+  { kind: "link", href: "/backlinks", label: "Backlinks", icon: Link2, minRole: "admin" },
+  {
+    kind: "group",
+    label: "Content Request",
+    icon: FileText,
+    minRole: "admin",
+    basePath: "/content",
+    children: [
+      { href: "/content?type=landing-request", label: "Landing Pages Request" },
+      { href: "/content?type=blog-request", label: "Blogs Request" },
+    ],
+  },
+  {
+    kind: "group",
+    label: "Content Update",
+    icon: FileText,
+    minRole: "admin",
+    basePath: "/content",
+    children: [
+      { href: "/content?type=landing-update", label: "Landing Pages Update" },
+      { href: "/content?type=blog-publish", label: "Blogs Publish" },
+    ],
+  },
+  { kind: "link", href: "/logs", label: "Logs", icon: ScrollText, minRole: "admin" },
+  { kind: "link", href: "/users", label: "Users", icon: Users, minRole: "super-admin" },
+  { kind: "link", href: "/settings", label: "Settings", icon: Settings, minRole: "super-admin" },
 ];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function roleRank(role?: string): number {
   if (role === "super-admin") return 3;
@@ -47,13 +85,54 @@ function roleBadgeLabel(role?: string) {
   return "User";
 }
 
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const role = session?.user?.role;
   const myRank = roleRank(role);
 
-  const visibleItems = navItems.filter((item) => myRank >= minRoleRank(item.minRole));
+  const activeType = searchParams.get("type") ?? "";
+
+  // Track which groups are open — auto-open if a child is active
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    navItems.forEach((item) => {
+      if (item.kind === "group") {
+        const anyActive = item.children.some((c) => {
+          const [childPath, childQuery] = c.href.split("?");
+          const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
+          return pathname === childPath && activeType === childType;
+        });
+        if (anyActive) init[item.label] = true;
+      }
+    });
+    return init;
+  });
+
+  // Auto-expand when navigating to a child route
+  useEffect(() => {
+    navItems.forEach((item) => {
+      if (item.kind === "group") {
+        const anyActive = item.children.some((c) => {
+          const [childPath, childQuery] = c.href.split("?");
+          const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
+          return pathname === childPath && activeType === childType;
+        });
+        if (anyActive) {
+          setOpenGroups((prev) => ({ ...prev, [item.label]: true }));
+        }
+      }
+    });
+  }, [pathname, activeType]);
+
+  function toggleGroup(label: string) {
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  }
+
+  const visible = navItems.filter((item) => myRank >= minRoleRank(item.minRole));
 
   return (
     <aside className="flex h-screen w-64 flex-col bg-gray-900 text-gray-100">
@@ -65,24 +144,80 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-1 px-3 py-4">
-        {visibleItems.map(({ href, label, icon: Icon }) => {
-          const isActive =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+      <nav className="flex-1 space-y-0.5 px-3 py-4 overflow-y-auto">
+        {visible.map((item) => {
+          if (item.kind === "link") {
+            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {item.label}
+              </Link>
+            );
+          }
+
+          // Group item
+          const Icon = item.icon;
+          const isOpen = !!openGroups[item.label];
+          const isAnyChildActive = item.children.some((c) => {
+            const [childPath, childQuery] = c.href.split("?");
+            const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
+            return pathname === childPath && activeType === childType;
+          });
+
           return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+            <div key={item.label}>
+              <button
+                onClick={() => toggleGroup(item.label)}
+                className={cn(
+                  "w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isAnyChildActive
+                    ? "text-blue-400 bg-gray-800"
+                    : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left">{item.label}</span>
+                <ChevronDown className={cn(
+                  "h-3.5 w-3.5 transition-transform duration-200",
+                  isOpen && "rotate-180"
+                )} />
+              </button>
+
+              {isOpen && (
+                <div className="mt-0.5 ml-4 pl-3 border-l border-gray-700 space-y-0.5">
+                  {item.children.map((child) => {
+                    const [childPath, childQuery] = child.href.split("?");
+                    const childType = new URLSearchParams(childQuery ?? "").get("type") ?? "";
+                    const isChildActive = pathname === childPath && activeType === childType;
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={cn(
+                          "block rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                          isChildActive
+                            ? "bg-blue-600 text-white"
+                            : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                        )}
+                      >
+                        {child.label}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
-            </Link>
+            </div>
           );
         })}
       </nav>
