@@ -75,9 +75,10 @@ async function _handle(req: Request) {
         resolvedInputs[inputDef.name] = tempPath;
       } else if (typeof value === "string" && value.trim()) {
         const str = value.trim();
-        // bing-indexnow passes URLs as a CLI arg which hits OS ENAMETOOLONG
-        // when the list is large — write to temp file and pass the path instead.
-        if (slug === "bing-indexnow" && str.length > 8000) {
+        // Large text inputs hit OS ENAMETOOLONG when passed as CLI args —
+        // write to a temp file and pass the path instead.
+        const slugsWithLargeTextInput = ["bing-indexnow", "sitemap-deleter"];
+        if (slugsWithLargeTextInput.includes(slug) && str.length > 8000) {
           const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}.txt`);
           await writeFile(tempPath, str);
           tempFiles.push(tempPath);

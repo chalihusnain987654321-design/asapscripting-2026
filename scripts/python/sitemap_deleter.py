@@ -4,6 +4,7 @@ Sitemap Deleter
 Removes specific sitemaps from a Google Search Console property.
 """
 import argparse
+import os
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
@@ -13,10 +14,14 @@ def main():
     parser.add_argument("--service_account_file", required=True)
     parser.add_argument("--gsc_property", required=True, help="Exact GSC property URL")
     parser.add_argument("--sitemap_urls", required=True,
-                        help="Newline-separated sitemap URLs to delete")
+                        help="Newline-separated sitemap URLs to delete, or path to a text file")
     args = parser.parse_args()
 
-    sitemaps = [u.strip() for u in args.sitemap_urls.splitlines() if u.strip()]
+    if os.path.isfile(args.sitemap_urls):
+        with open(args.sitemap_urls, "r", encoding="utf-8") as f:
+            sitemaps = [u.strip() for u in f if u.strip()]
+    else:
+        sitemaps = [u.strip() for u in args.sitemap_urls.splitlines() if u.strip()]
     if not sitemaps:
         print("[ERROR] No sitemap URLs provided.")
         return
