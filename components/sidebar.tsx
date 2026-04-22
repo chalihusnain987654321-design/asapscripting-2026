@@ -140,7 +140,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 flex-col bg-gray-900 text-gray-100">
       {/* Brand */}
-      <div className="flex items-center px-6 py-5 border-b border-gray-700">
+      <div className="flex items-center justify-center px-6 py-5 border-b border-gray-700">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/dashboard-logo.png" alt="ASAP" className="h-14 w-auto object-contain" />
       </div>
