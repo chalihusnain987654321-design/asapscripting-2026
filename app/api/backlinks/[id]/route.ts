@@ -24,6 +24,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   for (const key of allowed) {
     if (key in body) update[key] = body[key];
   }
+  if (body.date) update.createdAt = new Date(body.date);
 
   const updated = await Backlink.findByIdAndUpdate(params.id, update, { new: true }).lean();
   if (!updated) return Response.json({ error: "Not found." }, { status: 404 });

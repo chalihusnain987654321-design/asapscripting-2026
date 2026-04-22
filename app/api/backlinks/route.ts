@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { websiteName, backlinkUrls, type, status } = body;
+  const { websiteName, backlinkUrls, type, status, date } = body;
 
   if (!websiteName?.trim()) {
     return Response.json({ error: "Website name is required." }, { status: 400 });
@@ -97,6 +97,8 @@ export async function POST(req: Request) {
 
   await connectDB();
 
+  const createdAt = date ? new Date(date) : new Date();
+
   const docs = urls.map((url) => ({
     userId: session.user.id,
     userName: session.user.name ?? "",
@@ -109,6 +111,7 @@ export async function POST(req: Request) {
     da: null,
     status: status ?? "live",
     notes: "",
+    createdAt,
   }));
 
   const created = await Backlink.insertMany(docs);

@@ -609,6 +609,10 @@ function BacklinkTableRow({ row, isSuperAdmin, currentUserId, showMember, onEdit
 
 // ─── Add form (bulk) ─────────────────────────────────────────────────────────
 
+function todayPKT() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+}
+
 function AddBacklinksForm({ onSuccess, onCancel }: {
   onSuccess: (rows: BacklinkRow[]) => void;
   onCancel: () => void;
@@ -616,6 +620,7 @@ function AddBacklinksForm({ onSuccess, onCancel }: {
   const [websiteName, setWebsiteName] = useState("");
   const [type, setType] = useState("other");
   const [status, setStatus] = useState("live");
+  const [date, setDate] = useState(todayPKT());
   const [urlsText, setUrlsText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -631,7 +636,7 @@ function AddBacklinksForm({ onSuccess, onCancel }: {
     const res = await fetch("/api/backlinks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ websiteName, type, status, backlinkUrls }),
+      body: JSON.stringify({ websiteName, type, status, date, backlinkUrls }),
     });
     setLoading(false);
     if (!res.ok) { setError((await res.json()).error ?? "Something went wrong."); return; }
@@ -665,6 +670,17 @@ function AddBacklinksForm({ onSuccess, onCancel }: {
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Date</Label>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          required
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -710,6 +726,7 @@ function EditBacklinkForm({ initial, onSuccess, onCancel }: {
     backlinkUrl: initial.backlinkUrl,
     type: initial.type,
     status: initial.status,
+    date: initial.createdAt.slice(0, 10),
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -757,6 +774,16 @@ function EditBacklinkForm({ initial, onSuccess, onCancel }: {
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Date</Label>
+        <input
+          type="date"
+          value={form.date}
+          onChange={(e) => set("date", e.target.value)}
+          required
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2 justify-end pt-1">
