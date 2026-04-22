@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useState, useEffect } from "react";
@@ -142,7 +141,8 @@ export function Sidebar() {
     <aside className="flex h-screen w-64 flex-col bg-gray-900 text-gray-100">
       {/* Brand */}
       <div className="flex items-center px-6 py-5 border-b border-gray-700">
-        <Image src="/dashboard-logo.png" alt="ASAP" width={140} height={36} className="object-contain" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/dashboard-logo.png" alt="ASAP" className="h-9 w-auto object-contain" />
       </div>
 
       {/* Nav */}
