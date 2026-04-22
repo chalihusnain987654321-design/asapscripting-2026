@@ -44,7 +44,7 @@ export default function LoginPage() {
         {/* Brand */}
         <div className="flex flex-col items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/dashboard-logo.png" alt="ASAP" className="h-16 w-auto object-contain" />
+          <img src="/login-logo.png" alt="ASAP" className="h-16 w-auto object-contain" />
           <p className="text-sm text-muted-foreground">Sign in to your account</p>
         </div>
 
