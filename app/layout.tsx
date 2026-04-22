@@ -17,6 +17,7 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "ASAP Dashboard",
   description: "SEO automation dashboard for managing 600+ websites",
+  icons: { icon: "/dashboard-favicon.png" },
 };
 
 export default function RootLayout({
