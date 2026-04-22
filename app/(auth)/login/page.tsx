@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Globe, Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,10 +43,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-6">
         {/* Brand */}
         <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gray-900">
-            <Globe className="h-6 w-6 text-blue-400" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight">ASAP Dashboard</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/dashboard-logo.png" alt="ASAP" className="h-16 w-auto object-contain" />
           <p className="text-sm text-muted-foreground">Sign in to your account</p>
         </div>
 
