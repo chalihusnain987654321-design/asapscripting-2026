@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Loader2, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, ChevronDown, ChevronUp, CalendarDays, ChevronLeft, ChevronRight, Sheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,6 +54,7 @@ export function ReportsClient({ reports: initial, currentUserId, viewerRole, mem
   const [editItem, setEditItem] = useState<DailyReportRow | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [reportSheetOpen, setReportSheetOpen] = useState(false);
 
   // Filters
   const [filterMember, setFilterMember] = useState("");
@@ -113,12 +114,20 @@ export function ReportsClient({ reports: initial, currentUserId, viewerRole, mem
             {reports.length} report{reports.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {viewerRole !== "super-admin" && (
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="h-4 w-4" />
-            {todayReport ? "Add Another Report" : "Submit Today's Report"}
-          </Button>
-        )}
+        <div className="flex gap-2 flex-wrap">
+          {canSeeMembers && (
+            <Button variant="outline" onClick={() => setReportSheetOpen(true)}>
+              <Sheet className="h-4 w-4" />
+              Report Sheet
+            </Button>
+          )}
+          {viewerRole !== "super-admin" && (
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="h-4 w-4" />
+              {todayReport ? "Add Another Report" : "Submit Today's Report"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ── Today's report banner ── */}
@@ -225,6 +234,16 @@ export function ReportsClient({ reports: initial, currentUserId, viewerRole, mem
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Report Sheet ── */}
+      {canSeeMembers && (
+        <ReportSheetDialog
+          open={reportSheetOpen}
+          onClose={() => setReportSheetOpen(false)}
+          reports={reports}
+          members={members}
+        />
+      )}
 
       {/* ── Delete confirm ── */}
       <Dialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
@@ -373,5 +392,113 @@ function ReportForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+// ─── Report Sheet Dialog ──────────────────────────────────────────────────────
+
+function ReportSheetDialog({
+  open, onClose, reports, members,
+}: {
+  open: boolean;
+  onClose: () => void;
+  reports: DailyReportRow[];
+  members: { id: string; name: string }[];
+}) {
+  const now = new Date();
+  const [year, setYear]   = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth()); // 0-indexed
+
+  const todayStr    = todayPKT();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthStr    = String(month + 1).padStart(2, "0");
+  const yearStr     = String(year);
+  const monthLabel  = new Date(year, month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+
+  function prevMonth() {
+    if (month === 0) { setMonth(11); setYear((y) => y - 1); }
+    else setMonth((m) => m - 1);
+  }
+
+  function nextMonth() {
+    if (isCurrentMonth) return;
+    if (month === 11) { setMonth(0); setYear((y) => y + 1); }
+    else setMonth((m) => m + 1);
+  }
+
+  // Build lookup: "userId-YYYY-MM-DD"
+  const reportSet = new Set(reports.map((r) => `${r.userId}-${r.date.slice(0, 10)}`));
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-[95vw] w-full max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Report Sheet</DialogTitle>
+        </DialogHeader>
+
+        {/* Month navigation */}
+        <div className="flex items-center justify-center gap-3 py-1">
+          <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={prevMonth}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm font-semibold w-44 text-center">{monthLabel}</span>
+          <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={nextMonth} disabled={isCurrentMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Grid */}
+        <div className="overflow-auto flex-1 rounded-lg border">
+          <table className="text-xs border-collapse min-w-full">
+            <thead>
+              <tr className="bg-muted/50">
+                <th className="sticky left-0 z-10 bg-muted/80 border-b border-r px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap min-w-[160px]">
+                  Member
+                </th>
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
+                  <th key={day} className="border-b border-r px-2 py-2.5 font-medium text-muted-foreground text-center min-w-[36px]">
+                    {day}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {members.map((member) => (
+                <tr key={member.id} className="hover:bg-muted/20 transition-colors">
+                  <td className="sticky left-0 z-10 bg-card border-r px-4 py-2.5 font-medium whitespace-nowrap">
+                    {member.name}
+                  </td>
+                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+                    const dateStr = `${yearStr}-${monthStr}-${String(day).padStart(2, "0")}`;
+                    const isFuture = dateStr > todayStr;
+                    const hasReport = reportSet.has(`${member.id}-${dateStr}`);
+                    return (
+                      <td key={day} className="border-r px-1 py-2.5 text-center">
+                        {isFuture ? (
+                          <span className="text-muted-foreground/40 text-xs">—</span>
+                        ) : hasReport ? (
+                          <span className="text-green-600 font-bold">✓</span>
+                        ) : (
+                          <span className="text-red-500 font-bold">✗</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 pt-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="text-green-600 font-bold">✓</span> Submitted</span>
+          <span className="flex items-center gap-1"><span className="text-red-500 font-bold">✗</span> Missing</span>
+          <span className="flex items-center gap-1"><span className="text-muted-foreground/40">—</span> Future</span>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
