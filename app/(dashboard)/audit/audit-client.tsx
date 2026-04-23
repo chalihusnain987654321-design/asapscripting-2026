@@ -405,12 +405,14 @@ function NewAuditForm({
                 </div>
               </label>
               {result.checked && (
-                <Textarea
-                  placeholder="Describe what you found / checked for this point..."
-                  value={result.details}
-                  onChange={(e) => setDetails(idx, e.target.value)}
-                  className="text-sm min-h-[80px] ml-7"
-                />
+                <div className="pl-7">
+                  <Textarea
+                    placeholder="Describe what you found / checked for this point..."
+                    value={result.details}
+                    onChange={(e) => setDetails(idx, e.target.value)}
+                    className="text-sm min-h-[80px] w-full"
+                  />
+                </div>
               )}
             </div>
           );
