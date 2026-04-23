@@ -15,6 +15,7 @@ import {
   Link2,
   FileText,
   ClipboardList,
+  ClipboardCheck,
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ const navItems: NavItem[] = [
     ],
   },
   { kind: "link", href: "/daily-reports", label: "Daily Reports", icon: ClipboardList, minRole: "admin" },
+  { kind: "link", href: "/audit", label: "Website Audit", icon: ClipboardCheck, minRole: "admin" },
   { kind: "link", href: "/logs", label: "Logs", icon: ScrollText, minRole: "admin" },
   { kind: "link", href: "/users", label: "Users", icon: Users, minRole: "super-admin" },
   { kind: "link", href: "/settings", label: "Settings", icon: Settings, minRole: "super-admin" },
@@ -140,7 +142,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 flex-col bg-gray-900 text-gray-100">
       {/* Brand */}
-      <div className="flex items-center justify-center px-6 py-5 border-b border-gray-700">
+      <div className="flex items-center px-6 py-5 border-b border-gray-700">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/dashboard-logo.png" alt="ASAP" className="h-14 w-auto object-contain" />
       </div>
