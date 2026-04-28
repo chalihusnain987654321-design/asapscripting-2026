@@ -53,8 +53,8 @@ export async function GET() {
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = toDateStr(yesterday);
 
-  // Check from April 27, 2026 onwards
-  const startStr = "2026-04-27";
+  // Check from April 22, 2026 onwards
+  const startStr = "2026-04-22";
 
   const workingDays = workingDaysBetween(startStr, yesterdayStr);
   if (workingDays.length === 0) return Response.json({ missedDate: null });
