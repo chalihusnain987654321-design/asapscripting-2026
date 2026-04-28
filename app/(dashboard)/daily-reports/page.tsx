@@ -37,6 +37,7 @@ export default async function DailyReportsPage() {
     userName:  r.userName,
     date:      r.date.toISOString(),
     report:    r.report,
+    type:      (r.type ?? "report") as "report" | "leave",
     createdAt: r.createdAt.toISOString(),
   }));
 

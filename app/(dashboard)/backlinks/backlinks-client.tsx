@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
   Plus, Trash2, Pencil, ExternalLink, ChevronLeft, ChevronRight,
-  Link2, TrendingUp, Clock, AlertTriangle, Loader2, Users, ChevronDown, Search, X as XIcon,
+  Link2, TrendingUp, Clock, AlertTriangle, Loader2, Users, ChevronDown, Search, X as XIcon, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,6 +156,17 @@ export function BacklinksClient({
     router.push(`/backlinks?${params.toString()}`);
   }
 
+  function downloadCSV() {
+    const p = new URLSearchParams();
+    if (selectedTab)    p.set("tab",    selectedTab);
+    if (selectedTeamId) p.set("teamId", selectedTeamId);
+    if (filters.type)   p.set("type",   filters.type);
+    if (filters.status) p.set("status", filters.status);
+    if (filters.from)   p.set("from",   filters.from);
+    if (filters.to)     p.set("to",     filters.to);
+    window.location.href = `/api/backlinks/export?${p.toString()}`;
+  }
+
   function onAdded(newRows: BacklinkRow[]) {
     setRows((prev) => [...newRows, ...prev]);
     setAddOpen(false);
@@ -197,13 +208,20 @@ export function BacklinksClient({
               : "Your backlink history"}
           </p>
         </div>
-        {/* Admins view only; supervisors and regular users can add */}
-        {!isSuperAdmin && (
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Backlink
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {isSuperAdmin && (
+            <Button variant="outline" onClick={downloadCSV}>
+              <Download className="h-4 w-4" />
+              Download CSV
+            </Button>
+          )}
+          {!isSuperAdmin && (
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Backlink
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ── Member selector dropdown (super-admin + supervisor) ── */}

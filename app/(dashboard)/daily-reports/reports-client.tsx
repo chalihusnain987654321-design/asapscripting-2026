@@ -17,6 +17,7 @@ export interface DailyReportRow {
   userName: string;
   date: string;
   report: string;
+  type: "report" | "leave";
   createdAt: string;
 }
 
@@ -428,8 +429,8 @@ function ReportSheetDialog({
     else setMonth((m) => m + 1);
   }
 
-  // Build lookup: "userId-YYYY-MM-DD"
-  const reportSet = new Set(reports.map((r) => `${r.userId}-${r.date.slice(0, 10)}`));
+  // Build lookup: "userId-YYYY-MM-DD" -> type
+  const reportMap = new Map(reports.map((r) => [`${r.userId}-${r.date.slice(0, 10)}`, r.type ?? "report"]));
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -457,11 +458,17 @@ function ReportSheetDialog({
                 <th className="sticky left-0 z-10 bg-muted/80 border-b border-r px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap min-w-[160px]">
                   Member
                 </th>
-                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
-                  <th key={day} className="border-b border-r px-2 py-2.5 font-medium text-muted-foreground text-center min-w-[36px]">
-                    {day}
-                  </th>
-                ))}
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+                  const dow = new Date(year, month, day).getDay();
+                  const isWeekend = dow === 0 || dow === 6;
+                  const dayLabel = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dow];
+                  return (
+                    <th key={day} className={cn("border-b border-r px-2 py-2.5 font-medium text-center min-w-[36px]", isWeekend ? "bg-muted/60 text-muted-foreground/50" : "text-muted-foreground")}>
+                      <div>{day}</div>
+                      <div className="text-[9px] leading-none mt-0.5">{dayLabel}</div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -473,11 +480,16 @@ function ReportSheetDialog({
                   {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
                     const dateStr = `${yearStr}-${monthStr}-${String(day).padStart(2, "0")}`;
                     const isFuture = dateStr > todayStr;
-                    const hasReport = reportSet.has(`${member.id}-${dateStr}`);
+                    const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
+                    const reportType = reportMap.get(`${member.id}-${dateStr}`);
+                    const hasReport = reportType !== undefined;
+                    const isLeave = reportType === "leave";
                     return (
-                      <td key={day} className="border-r px-1 py-2.5 text-center">
-                        {isFuture ? (
+                      <td key={day} className={cn("border-r px-1 py-2.5 text-center", isWeekend && "bg-muted/40")}>
+                        {isWeekend ? null : isFuture ? (
                           <span className="text-muted-foreground/40 text-xs">—</span>
+                        ) : isLeave ? (
+                          <span className="text-amber-500 font-bold text-xs">L</span>
                         ) : hasReport ? (
                           <span className="text-green-600 font-bold">✓</span>
                         ) : (
@@ -493,10 +505,12 @@ function ReportSheetDialog({
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 pt-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-4 pt-1 text-xs text-muted-foreground flex-wrap">
           <span className="flex items-center gap-1"><span className="text-green-600 font-bold">✓</span> Submitted</span>
+          <span className="flex items-center gap-1"><span className="text-amber-500 font-bold">L</span> Leave</span>
           <span className="flex items-center gap-1"><span className="text-red-500 font-bold">✗</span> Missing</span>
           <span className="flex items-center gap-1"><span className="text-muted-foreground/40">—</span> Future</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-muted/60 border" /> Weekend (off)</span>
         </div>
       </DialogContent>
     </Dialog>

@@ -50,6 +50,7 @@ export async function GET(req: Request) {
       userName:  r.userName,
       date:      r.date.toISOString(),
       report:    r.report,
+      type:      r.type ?? "report",
       createdAt: r.createdAt.toISOString(),
     }))
   );
@@ -61,10 +62,14 @@ export async function POST(req: Request) {
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { date, report } = body;
+  const { date, report, type } = body;
+  const isLeave = type === "leave";
 
-  if (!date || !report?.trim()) {
-    return Response.json({ error: "Date and report are required." }, { status: 400 });
+  if (!date) {
+    return Response.json({ error: "Date is required." }, { status: 400 });
+  }
+  if (!isLeave && !report?.trim()) {
+    return Response.json({ error: "Report cannot be empty." }, { status: 400 });
   }
 
   await connectDB();
@@ -73,7 +78,8 @@ export async function POST(req: Request) {
     userId:   session.user.id,
     userName: session.user.name ?? "",
     date:     new Date(date),
-    report:   report.trim(),
+    report:   isLeave ? "On leave" : report.trim(),
+    type:     isLeave ? "leave" : "report",
   });
 
   return Response.json({
@@ -82,6 +88,7 @@ export async function POST(req: Request) {
     userName:  created.userName,
     date:      created.date.toISOString(),
     report:    created.report,
+    type:      created.type,
     createdAt: created.createdAt.toISOString(),
   }, { status: 201 });
 }

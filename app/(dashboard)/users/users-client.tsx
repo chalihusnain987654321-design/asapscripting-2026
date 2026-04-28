@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, ShieldCheck, Crown, Loader2 } from "lucide-react";
+import { UserPlus, ShieldCheck, Crown, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +72,8 @@ export function UsersClient({ users: initial, currentUserId, currentUserRole }: 
   const router = useRouter();
   const [users, setUsers] = useState(initial);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const myRank = roleRank(currentUserRole);
 
   function updateUser(updated: UserRow) {
@@ -99,6 +101,20 @@ export function UsersClient({ users: initial, currentUserId, currentUserRole }: 
     });
     if (res.ok) {
       updateUser(await res.json());
+    } else {
+      alert((await res.json()).error);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const res = await fetch(`/api/users/${deleteTarget.id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (res.ok) {
+      setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      router.refresh();
     } else {
       alert((await res.json()).error);
     }
@@ -152,8 +168,9 @@ export function UsersClient({ users: initial, currentUserId, currentUserRole }: 
           <tbody className="divide-y">
             {users.map((user) => {
               const isSelf = user.id === currentUserId;
-              // Can manage if target rank is strictly less than my rank, and not self
               const canManage = !isSelf && roleRank(user.role) < myRank;
+              // super-admin can delete anyone (including other super-admins) except themselves
+              const canDelete = !isSelf && myRank === 3;
               const roles = assignableRoles(user.role);
 
               return (
@@ -182,10 +199,9 @@ export function UsersClient({ users: initial, currentUserId, currentUserRole }: 
                     {new Date(user.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
-                    {canManage && (
+                    {(canManage || canDelete) && (
                       <div className="flex gap-2 justify-end">
-                        {/* Role change dropdown */}
-                        {roles.length > 0 && (
+                        {canManage && roles.length > 0 && (
                           <select
                             className="h-8 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             value={user.role}
@@ -197,13 +213,25 @@ export function UsersClient({ users: initial, currentUserId, currentUserRole }: 
                             ))}
                           </select>
                         )}
-                        <Button
-                          variant={user.isActive ? "destructive" : "outline"}
-                          size="sm"
-                          onClick={() => toggleActive(user)}
-                        >
-                          {user.isActive ? "Deactivate" : "Reactivate"}
-                        </Button>
+                        {canManage && (
+                          <Button
+                            variant={user.isActive ? "destructive" : "outline"}
+                            size="sm"
+                            onClick={() => toggleActive(user)}
+                          >
+                            {user.isActive ? "Deactivate" : "Reactivate"}
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteTarget(user)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </td>
@@ -213,6 +241,29 @@ export function UsersClient({ users: initial, currentUserId, currentUserRole }: 
           </tbody>
         </table>
       </div>
+
+      {/* ── Delete confirm dialog ── */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete user?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to permanently delete{" "}
+            <span className="font-semibold text-foreground">{deleteTarget?.name}</span>?
+            This action cannot be undone.
+          </p>
+          <div className="flex gap-2 justify-end mt-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

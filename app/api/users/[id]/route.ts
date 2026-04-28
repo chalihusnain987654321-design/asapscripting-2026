@@ -86,3 +86,31 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     createdAt: updated.createdAt.toISOString(),
   });
 }
+
+// DELETE /api/users/[id] — permanently remove a user (super-admin only)
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  const myRole = session?.user.role;
+
+  if (roleRank(myRole) < 3) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  if (params.id === session!.user.id) {
+    return Response.json({ error: "You cannot delete your own account." }, { status: 400 });
+  }
+
+  await connectDB();
+
+  const target = await User.findById(params.id);
+  if (!target) return Response.json({ error: "User not found." }, { status: 404 });
+
+  // super-admin can delete any account (including other super-admins) except themselves
+  // lower roles cannot delete equal/higher ranks
+  if (roleRank(myRole) < 3 && roleRank(target.role) >= roleRank(myRole)) {
+    return Response.json({ error: "You do not have permission to delete this account." }, { status: 403 });
+  }
+
+  await User.findByIdAndDelete(params.id);
+  return Response.json({ success: true });
+}

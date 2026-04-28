@@ -46,6 +46,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     userName:  updated.userName,
     date:      updated.date.toISOString(),
     report:    updated.report,
+    type:      updated.type ?? "report",
     createdAt: updated.createdAt.toISOString(),
   });
 }

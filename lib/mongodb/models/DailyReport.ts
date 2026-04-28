@@ -5,6 +5,7 @@ export interface IDailyReport extends Document {
   userName: string;
   date: Date;
   report: string;
+  type: "report" | "leave";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -15,6 +16,7 @@ const DailyReportSchema = new Schema<IDailyReport>(
     userName: { type: String, required: true },
     date:     { type: Date,   required: true },
     report:   { type: String, required: true, trim: true },
+    type:     { type: String, enum: ["report", "leave"], default: "report" },
   },
   { timestamps: true }
 );
