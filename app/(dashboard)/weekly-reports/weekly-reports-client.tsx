@@ -49,20 +49,30 @@ function currentWeekStart(): string {
   return monday.toLocaleDateString("en-CA", { timeZone: PKT });
 }
 
-function weekOptions(n = 12): { start: string; label: string }[] {
+function weekOptions(): { start: string; label: string }[] {
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth(); // 0-indexed
+
+  const firstOfMonth = new Date(year, month, 1);
+  const lastOfMonth  = new Date(year, month + 1, 0);
+
+  // Monday of the week that contains the 1st of the month
+  const firstDay = firstOfMonth.getDay();
+  const diff = firstDay === 0 ? -6 : 1 - firstDay;
+  const cursor = new Date(firstOfMonth);
+  cursor.setDate(firstOfMonth.getDate() + diff);
+
   const opts: { start: string; label: string }[] = [];
-  const base = currentWeekStart();
-  const [y, m, d] = base.split("-").map(Number);
-  const baseDate = new Date(y, m - 1, d);
-  for (let i = 0; i < n; i++) {
-    const mon = new Date(baseDate);
-    mon.setDate(baseDate.getDate() - i * 7);
-    const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
-    const start = mon.toLocaleDateString("en-CA");
-    const fmt = (dt: Date) => dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-    opts.push({ start, label: `${fmt(mon)} – ${fmt(sun)}` });
+  const fmt = (dt: Date) => dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+  while (cursor <= lastOfMonth) {
+    const sun = new Date(cursor);
+    sun.setDate(cursor.getDate() + 6);
+    opts.push({ start: cursor.toLocaleDateString("en-CA"), label: `${fmt(cursor)} – ${fmt(sun)}` });
+    cursor.setDate(cursor.getDate() + 7);
   }
+
   return opts;
 }
 
@@ -531,7 +541,7 @@ function BulkReportForm({ assignedWebsites, onSaved, onCancel }: {
   onCancel: () => void;
 }) {
   const weeks = weekOptions();
-  const [weekStart, setWeekStart] = useState(weeks[0]?.start ?? "");
+  const [weekStart, setWeekStart] = useState(currentWeekStart);
   const [data, setData] = useState<Record<string, WebsiteFields>>(() =>
     Object.fromEntries(assignedWebsites.map((w) => [w.id, { clicks: "", impressions: "", indexation: "", rfqs: "" }]))
   );
