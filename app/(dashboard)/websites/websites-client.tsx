@@ -169,7 +169,7 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
                         {w.assignedTo.map((a) => (
                           <span key={a.userId}
                             className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium">
-                            {a.userName.split(" ")[0]}
+                            {a.userName}
                           </span>
                         ))}
                       </div>
