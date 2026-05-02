@@ -23,6 +23,14 @@ export default async function LogsPage({
 
   await connectDB();
 
+  // Auto-fix stale "running" logs left over from server restarts / redeployments.
+  // maxDuration is 5 min, so anything still "running" after 10 min is definitely stuck.
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+  await ExecutionLog.updateMany(
+    { status: "running", startedAt: { $lt: staleThreshold } },
+    { $set: { status: "error", completedAt: new Date(), output: "Interrupted — server was restarted during execution." } }
+  );
+
   // Determine which user IDs this viewer can see
   let visibleUserIds: string[] | null = null; // null = all users (super-admin)
 
