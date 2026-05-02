@@ -11,13 +11,19 @@ export default async function WebsitesPage() {
 
   await connectDB();
 
-  // Build member list for assignment dialog (super-admin only)
+  // Build member list — for assignment dialog (super-admin) and filter (super-admin + sub-lead)
   const members: MemberOption[] = [];
 
   if (role === "super-admin") {
     const users = await User.find({ isActive: true, role: { $ne: "super-admin" } })
       .sort({ name: 1 })
       .lean();
+    users.forEach((u) => members.push({ id: u._id.toString(), name: u.name }));
+  } else if (role === "sub-lead") {
+    const group = await Group.findOne({ leadUserId: myId }).lean();
+    const memberIds = group ? group.memberUserIds.map((id) => id.toString()) : [];
+    const allIds = [myId, ...memberIds];
+    const users = await User.find({ _id: { $in: allIds }, isActive: true }).sort({ name: 1 }).lean();
     users.forEach((u) => members.push({ id: u._id.toString(), name: u.name }));
   }
 

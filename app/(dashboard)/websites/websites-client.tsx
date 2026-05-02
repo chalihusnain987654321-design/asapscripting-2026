@@ -42,7 +42,13 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
   const [deleting,   setDeleting]   = useState(false);
   const [assignItem, setAssignItem] = useState<WebsiteRow | null>(null);
 
-  const isSuperAdmin = viewerRole === "super-admin";
+  const isSuperAdmin  = viewerRole === "super-admin";
+  const canFilter     = viewerRole === "super-admin" || viewerRole === "sub-lead";
+  const [filterMember, setFilterMember] = useState("");
+
+  const filtered = filterMember
+    ? websites.filter((w) => w.assignedTo.some((a) => a.userId === filterMember))
+    : websites;
 
   function onAdded(w: WebsiteRow) {
     setWebsites((prev) => [w, ...prev].sort((a, b) => a.name.localeCompare(b.name)));
@@ -85,24 +91,48 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
           <h2 className="text-2xl font-bold">Websites</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             {isSuperAdmin
-              ? `${websites.length} website${websites.length !== 1 ? "s" : ""} total`
-              : `${websites.length} website${websites.length !== 1 ? "s" : ""} assigned to you`}
+              ? `${filtered.length} of ${websites.length} website${websites.length !== 1 ? "s" : ""}`
+              : `${filtered.length} website${filtered.length !== 1 ? "s" : ""} assigned to you`}
           </p>
         </div>
-        {isSuperAdmin && (
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Website
-          </Button>
-        )}
+        <div className="flex gap-2 flex-wrap items-center">
+          {canFilter && members.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">Filter by member:</Label>
+              <select
+                value={filterMember}
+                onChange={(e) => setFilterMember(e.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">All members</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              {filterMember && (
+                <button onClick={() => setFilterMember("")} className="text-xs text-muted-foreground hover:text-foreground underline">
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+          {isSuperAdmin && (
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Website
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* List */}
-      {websites.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="rounded-lg border bg-card p-12 text-center">
           <Globe className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">
-            {isSuperAdmin ? "No websites added yet." : "No websites assigned to you yet."}
+            {websites.length === 0
+              ? isSuperAdmin ? "No websites added yet." : "No websites assigned to you yet."
+              : "No websites match the selected filter."}
           </p>
         </div>
       ) : (
@@ -117,7 +147,7 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
               </tr>
             </thead>
             <tbody className="divide-y">
-              {websites.map((w) => (
+              {filtered.map((w) => (
                 <tr key={w.id} className="hover:bg-muted/20 transition-colors group">
                   <td className="px-4 py-3 font-medium">{w.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">
