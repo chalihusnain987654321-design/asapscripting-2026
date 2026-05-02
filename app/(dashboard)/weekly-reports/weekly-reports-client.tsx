@@ -321,7 +321,7 @@ export function WeeklyReportsClient({ reports: initial, assignedWebsites, member
 
       {/* ── Add dialog (bulk: all websites at once) ── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Add Weekly Report</DialogTitle></DialogHeader>
           <BulkReportForm
             assignedWebsites={assignedWebsites}
