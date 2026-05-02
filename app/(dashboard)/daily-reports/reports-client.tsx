@@ -17,7 +17,7 @@ export interface DailyReportRow {
   userName: string;
   date: string;
   report: string;
-  type: "report" | "leave";
+  type: "report" | "leave" | "public-holiday";
   createdAt: string;
 }
 
@@ -482,12 +482,15 @@ function ReportSheetDialog({
                     const isFuture = dateStr > todayStr;
                     const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
                     const reportType = reportMap.get(`${member.id}-${dateStr}`);
-                    const hasReport = reportType !== undefined;
-                    const isLeave = reportType === "leave";
+                    const hasReport  = reportType !== undefined;
+                    const isLeave    = reportType === "leave";
+                    const isHoliday  = reportType === "public-holiday";
                     return (
                       <td key={day} className={cn("border-r px-1 py-2.5 text-center", isWeekend && "bg-muted/40")}>
                         {isWeekend ? null : isFuture ? (
                           <span className="text-muted-foreground/40 text-xs">—</span>
+                        ) : isHoliday ? (
+                          <span className="text-purple-500 font-bold text-xs">PH</span>
                         ) : isLeave ? (
                           <span className="text-amber-500 font-bold text-xs">L</span>
                         ) : hasReport ? (
@@ -508,6 +511,7 @@ function ReportSheetDialog({
         <div className="flex items-center gap-4 pt-1 text-xs text-muted-foreground flex-wrap">
           <span className="flex items-center gap-1"><span className="text-green-600 font-bold">✓</span> Submitted</span>
           <span className="flex items-center gap-1"><span className="text-amber-500 font-bold">L</span> Leave</span>
+          <span className="flex items-center gap-1"><span className="text-purple-500 font-bold">PH</span> Public Holiday</span>
           <span className="flex items-center gap-1"><span className="text-red-500 font-bold">✗</span> Missing</span>
           <span className="flex items-center gap-1"><span className="text-muted-foreground/40">—</span> Future</span>
           <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-muted/60 border" /> Weekend (off)</span>

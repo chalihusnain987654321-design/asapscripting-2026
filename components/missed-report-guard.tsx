@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
-import { CalendarDays, Loader2, PlaneTakeoff } from "lucide-react";
+import { CalendarDays, Loader2, PlaneTakeoff, PartyPopper } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -71,6 +71,17 @@ export function MissedReportGuard() {
     await checkMissed();
   }
 
+  async function markHoliday() {
+    setError(""); setLoading(true);
+    const res = await fetch("/api/daily-reports", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: missedDate, type: "public-holiday" }),
+    });
+    if (!res.ok) { setLoading(false); setError("Something went wrong. Please try again."); return; }
+    await checkMissed();
+  }
+
   if (!open) return null;
 
   return (
@@ -106,6 +117,13 @@ export function MissedReportGuard() {
                 : <PlaneTakeoff className="h-4 w-4" />
               }
               I was on leave
+            </Button>
+            <Button variant="outline" className="w-full" onClick={markHoliday} disabled={loading}>
+              {loading
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <PartyPopper className="h-4 w-4" />
+              }
+              Public Holiday
             </Button>
           </div>
         ) : (

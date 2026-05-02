@@ -63,12 +63,14 @@ export async function POST(req: Request) {
 
   const body = await req.json();
   const { date, report, type } = body;
-  const isLeave = type === "leave";
+  const isLeave   = type === "leave";
+  const isHoliday = type === "public-holiday";
+  const noReport  = isLeave || isHoliday;
 
   if (!date) {
     return Response.json({ error: "Date is required." }, { status: 400 });
   }
-  if (!isLeave && !report?.trim()) {
+  if (!noReport && !report?.trim()) {
     return Response.json({ error: "Report cannot be empty." }, { status: 400 });
   }
 
@@ -78,8 +80,8 @@ export async function POST(req: Request) {
     userId:   session.user.id,
     userName: session.user.name ?? "",
     date:     new Date(date),
-    report:   isLeave ? "On leave" : report.trim(),
-    type:     isLeave ? "leave" : "report",
+    report:   isLeave ? "On leave" : isHoliday ? "Public holiday" : report.trim(),
+    type:     noReport ? type : "report",
   });
 
   return Response.json({
