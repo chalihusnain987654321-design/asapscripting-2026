@@ -37,6 +37,14 @@ export default async function OverviewPage({
   const { from, to } = searchParams;
 
   await connectDB();
+
+  // Auto-fix stale "running" logs from server restarts / redeployments
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+  await ExecutionLog.updateMany(
+    { status: "running", startedAt: { $lt: staleThreshold } },
+    { $set: { status: "error", completedAt: new Date(), output: "Interrupted — server was restarted during execution." } }
+  );
+
   const userFilter = await getUserFilter(role, myId);
 
   // Script filter includes optional date range
