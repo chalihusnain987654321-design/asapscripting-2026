@@ -135,11 +135,21 @@ export function WeeklyReportsClient({ reports: initial, assignedWebsites, member
   const canSubmit    = viewerRole !== "super-admin";
   const showGrouped  = viewerRole === "super-admin" || viewerRole === "sub-lead";
 
-  function onSaved(r: WeeklyReportRow, isNew: boolean) {
-    setReports((prev) =>
-      isNew ? [r, ...prev] : prev.map((x) => (x.id === r.id ? r : x))
-    );
+  function onSavedMany(rows: WeeklyReportRow[]) {
+    setReports((prev) => {
+      let next = [...prev];
+      for (const r of rows) {
+        const idx = next.findIndex((x) => x.id === r.id);
+        if (idx >= 0) next[idx] = r; else next = [r, ...next];
+      }
+      return next;
+    });
     setAddOpen(false);
+    router.refresh();
+  }
+
+  function onSavedOne(r: WeeklyReportRow) {
+    setReports((prev) => prev.map((x) => (x.id === r.id ? r : x)));
     setEditItem(null);
     router.refresh();
   }
@@ -309,27 +319,27 @@ export function WeeklyReportsClient({ reports: initial, assignedWebsites, member
         </div>
       )}
 
-      {/* Dialogs */}
+      {/* ── Add dialog (bulk: all websites at once) ── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Add Weekly Report</DialogTitle></DialogHeader>
-          <ReportForm
+          <BulkReportForm
             assignedWebsites={assignedWebsites}
-            onSaved={(r) => onSaved(r, true)}
+            onSaved={onSavedMany}
             onCancel={() => setAddOpen(false)}
           />
         </DialogContent>
       </Dialog>
 
+      {/* ── Edit dialog (single row) ── */}
       <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Edit Weekly Report</DialogTitle></DialogHeader>
           {editItem && (
-            <ReportForm
+            <EditForm
               key={editItem.id}
               existing={editItem}
-              assignedWebsites={assignedWebsites}
-              onSaved={(r) => onSaved(r, false)}
+              onSaved={onSavedOne}
               onCancel={() => setEditItem(null)}
             />
           )}
@@ -511,21 +521,142 @@ function MonthSection({ monthKey, byWeek, userId, currentUserId, isSuperAdmin, o
   );
 }
 
-// ─── Report Form ──────────────────────────────────────────────────────────────
+// ─── Bulk Add Form (all websites, one week) ───────────────────────────────────
 
-function ReportForm({ existing, assignedWebsites, onSaved, onCancel }: {
-  existing?: WeeklyReportRow;
+type WebsiteFields = { clicks: string; impressions: string; indexation: string; rfqs: string };
+
+function BulkReportForm({ assignedWebsites, onSaved, onCancel }: {
   assignedWebsites: AssignedWebsite[];
-  onSaved: (r: WeeklyReportRow) => void;
+  onSaved: (rows: WeeklyReportRow[]) => void;
   onCancel: () => void;
 }) {
   const weeks = weekOptions();
-  const [websiteId,   setWebsiteId]   = useState(existing?.websiteId   ?? assignedWebsites[0]?.id ?? "");
-  const [weekStart,   setWeekStart]   = useState(existing?.weekStart   ?? weeks[0]?.start ?? "");
-  const [clicks,      setClicks]      = useState(String(existing?.clicks      ?? ""));
-  const [impressions, setImpressions] = useState(String(existing?.impressions ?? ""));
-  const [indexation,  setIndexation]  = useState(String(existing?.indexation  ?? ""));
-  const [rfqs,        setRfqs]        = useState(String(existing?.rfqs        ?? ""));
+  const [weekStart, setWeekStart] = useState(weeks[0]?.start ?? "");
+  const [data, setData] = useState<Record<string, WebsiteFields>>(() =>
+    Object.fromEntries(assignedWebsites.map((w) => [w.id, { clicks: "", impressions: "", indexation: "", rfqs: "" }]))
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
+
+  const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+  function setField(wId: string, field: keyof WebsiteFields, value: string) {
+    setData((prev) => ({ ...prev, [wId]: { ...prev[wId], [field]: value } }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(""); setLoading(true);
+
+    const results: WeeklyReportRow[] = [];
+    for (const w of assignedWebsites) {
+      const d = data[w.id];
+      const res = await fetch("/api/weekly-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          websiteId:   w.id,
+          websiteName: w.name,
+          weekStart,
+          clicks:      Number(d.clicks)      || 0,
+          impressions: Number(d.impressions)  || 0,
+          indexation:  Number(d.indexation)   || 0,
+          rfqs:        Number(d.rfqs)         || 0,
+        }),
+      });
+      if (!res.ok) {
+        setError((await res.json()).error ?? "Something went wrong.");
+        setLoading(false);
+        return;
+      }
+      results.push(await res.json());
+    }
+
+    setLoading(false);
+    onSaved(results);
+  }
+
+  if (assignedWebsites.length === 0) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-destructive">No websites assigned to you. Ask your admin to assign websites first.</p>
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={onCancel}>Close</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Week selector */}
+      <div className="space-y-1.5">
+        <Label>Week <span className="text-destructive">*</span></Label>
+        <select className={selectClass} value={weekStart} onChange={(e) => setWeekStart(e.target.value)}>
+          {weeks.map((w) => <option key={w.start} value={w.start}>{w.label}</option>)}
+        </select>
+      </div>
+
+      {/* Per-website rows */}
+      <div className="rounded-md border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/40 border-b">
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">Website</th>
+              {COLS.map((c) => (
+                <th key={c} className="text-center px-3 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {assignedWebsites.map((w) => {
+              const d = data[w.id];
+              return (
+                <tr key={w.id} className={cn("transition-colors", "hover:bg-muted/10")}>
+                  <td className="px-4 py-2.5 font-medium text-sm whitespace-nowrap">{w.name}</td>
+                  {(["clicks", "impressions", "indexation", "rfqs"] as const).map((field) => (
+                    <td key={field} className="px-3 py-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={d[field]}
+                        onChange={(e) => setField(w.id, field, e.target.value)}
+                        className="h-8 w-24 text-center tabular-nums"
+                      />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="flex gap-2 justify-end pt-1">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Cancel</Button>
+        <Button type="submit" disabled={loading}>
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Submit Reports
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// ─── Edit Form (single row) ───────────────────────────────────────────────────
+
+function EditForm({ existing, onSaved, onCancel }: {
+  existing: WeeklyReportRow;
+  onSaved: (r: WeeklyReportRow) => void;
+  onCancel: () => void;
+}) {
+  const [clicks,      setClicks]      = useState(String(existing.clicks));
+  const [impressions, setImpressions] = useState(String(existing.impressions));
+  const [indexation,  setIndexation]  = useState(String(existing.indexation));
+  const [rfqs,        setRfqs]        = useState(String(existing.rfqs));
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState("");
 
@@ -533,17 +664,10 @@ function ReportForm({ existing, assignedWebsites, onSaved, onCancel }: {
     e.preventDefault();
     setError(""); setLoading(true);
 
-    const website = assignedWebsites.find((w) => w.id === websiteId);
-    const url     = existing ? `/api/weekly-reports/${existing.id}` : "/api/weekly-reports";
-    const method  = existing ? "PATCH" : "POST";
-
-    const res = await fetch(url, {
-      method,
+    const res = await fetch(`/api/weekly-reports/${existing.id}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        websiteId,
-        websiteName: website?.name ?? existing?.websiteName ?? "",
-        weekStart,
         clicks:      Number(clicks)      || 0,
         impressions: Number(impressions) || 0,
         indexation:  Number(indexation)  || 0,
@@ -556,40 +680,14 @@ function ReportForm({ existing, assignedWebsites, onSaved, onCancel }: {
     onSaved(await res.json());
   }
 
-  const inputClass = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {!existing && (
-        <div className="space-y-1.5">
-          <Label>Website <span className="text-destructive">*</span></Label>
-          {assignedWebsites.length === 0 ? (
-            <p className="text-sm text-destructive">No websites assigned to you. Ask your admin to assign websites first.</p>
-          ) : (
-            <select className={inputClass} value={websiteId} onChange={(e) => setWebsiteId(e.target.value)}>
-              {assignedWebsites.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          )}
-        </div>
-      )}
-
-      {existing && (
-        <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">
-          <span className="text-muted-foreground">Website: </span>
-          <span className="font-medium">{existing.websiteName}</span>
-          <span className="text-muted-foreground ml-3">Week: </span>
-          <span className="font-medium">{formatWeekRange(existing.weekStart)}</span>
-        </div>
-      )}
-
-      {!existing && (
-        <div className="space-y-1.5">
-          <Label>Week <span className="text-destructive">*</span></Label>
-          <select className={inputClass} value={weekStart} onChange={(e) => setWeekStart(e.target.value)}>
-            {weeks.map((w) => <option key={w.start} value={w.start}>{w.label}</option>)}
-          </select>
-        </div>
-      )}
+      <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">
+        <span className="text-muted-foreground">Website: </span>
+        <span className="font-medium">{existing.websiteName}</span>
+        <span className="text-muted-foreground ml-3">Week: </span>
+        <span className="font-medium">{formatWeekRange(existing.weekStart)}</span>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         {([
@@ -615,9 +713,9 @@ function ReportForm({ existing, assignedWebsites, onSaved, onCancel }: {
 
       <div className="flex gap-2 justify-end pt-1">
         <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Cancel</Button>
-        <Button type="submit" disabled={loading || (!existing && !websiteId)}>
+        <Button type="submit" disabled={loading}>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {existing ? "Save Changes" : "Submit Report"}
+          Save Changes
         </Button>
       </div>
     </form>
