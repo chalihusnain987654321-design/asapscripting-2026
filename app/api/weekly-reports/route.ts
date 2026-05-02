@@ -30,7 +30,7 @@ export async function GET() {
 
   await connectDB();
 
-  let filter: Record<string, unknown> = {};
+  const filter: Record<string, unknown> = {};
 
   if (role === "admin") {
     filter.userId = myId;
