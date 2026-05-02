@@ -258,7 +258,7 @@ export function WeeklyReportsClient({ reports: initial, assignedWebsites, member
           </div>
         ) : (
           <div className="space-y-4">
-            {[...grouped.entries()].sort(([, a], [, b]) => a.userName.localeCompare(b.userName)).map(([userId, { userName, byMonth }]) => (
+            {Array.from(grouped.entries()).sort(([, a], [, b]) => a.userName.localeCompare(b.userName)).map(([userId, { userName, byMonth }]) => (
               <MemberSection
                 key={userId}
                 userId={userId}
@@ -385,7 +385,7 @@ function MemberSection({ userId, userName, byMonth, currentUserId, isSuperAdmin,
 }) {
   const [open, setOpen] = useState(true);
 
-  const allRows = [...byMonth.values()].flatMap((bw) => [...bw.values()].flat());
+  const allRows = Array.from(byMonth.values()).flatMap((bw) => Array.from(bw.values()).flat());
   const grandTotal = sumRows(allRows);
 
   return (
@@ -409,7 +409,7 @@ function MemberSection({ userId, userName, byMonth, currentUserId, isSuperAdmin,
 
       {open && (
         <div className="divide-y">
-          {[...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([mk, byWeek]) => (
+          {Array.from(byMonth.entries()).sort(([a], [b]) => b.localeCompare(a)).map(([mk, byWeek]) => (
             <MonthSection
               key={mk}
               monthKey={mk}
@@ -439,7 +439,7 @@ function MonthSection({ monthKey, byWeek, userId, currentUserId, isSuperAdmin, o
   onDelete: (id: string) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const allRows = [...byWeek.values()].flat();
+  const allRows = Array.from(byWeek.values()).flat();
   const monthTotal = sumRows(allRows);
   const canModify = isSuperAdmin || userId === currentUserId;
 
@@ -471,7 +471,7 @@ function MonthSection({ monthKey, byWeek, userId, currentUserId, isSuperAdmin, o
               </tr>
             </thead>
             <tbody className="divide-y">
-              {[...byWeek.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([weekStart, rows]) => {
+              {Array.from(byWeek.entries()).sort(([a], [b]) => b.localeCompare(a)).map(([weekStart, rows]) => {
                 const weekTotal = sumRows(rows);
                 return (
                   <>
