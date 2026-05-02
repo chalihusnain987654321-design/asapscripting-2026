@@ -179,7 +179,7 @@ export function WeeklyReportsClient({ reports: initial, assignedWebsites, member
   }
 
   // Unique months across all reports (for filter)
-  const allMonths = [...new Set(reports.map((r) => r.weekStart.slice(0, 7)))].sort().reverse();
+  const allMonths = Array.from(new Set(reports.map((r) => r.weekStart.slice(0, 7)))).sort().reverse();
 
   // Filter reports for grouped view
   const filteredReports = reports.filter((r) => {
