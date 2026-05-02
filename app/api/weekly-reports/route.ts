@@ -4,7 +4,21 @@ import { connectDB, WeeklyReport, Group } from "@/lib/mongodb";
 
 export const dynamic = "force-dynamic";
 
-function toRow(r: Record<string, unknown> & { _id: { toString(): string }; createdAt: Date }) {
+interface ReportShape {
+  _id: { toString(): string };
+  userId: string;
+  userName: string;
+  websiteId: string;
+  websiteName: string;
+  weekStart: string;
+  clicks: number;
+  impressions: number;
+  indexation: number;
+  rfqs: number;
+  createdAt: Date;
+}
+
+function toRow(r: ReportShape) {
   return {
     id:          r._id.toString(),
     userId:      r.userId,
@@ -42,7 +56,7 @@ export async function GET() {
   // super-admin: no filter
 
   const rows = await WeeklyReport.find(filter).sort({ weekStart: -1 }).lean();
-  return Response.json(rows.map(toRow));
+  return Response.json(rows.map((r) => toRow(r as unknown as ReportShape)));
 }
 
 // POST /api/weekly-reports
@@ -71,7 +85,7 @@ export async function POST(req: Request) {
     existing.indexation  = indexation  ?? 0;
     existing.rfqs        = rfqs        ?? 0;
     await existing.save();
-    return Response.json(toRow(existing.toObject()));
+    return Response.json(toRow(existing.toObject() as unknown as ReportShape));
   }
 
   const created = await WeeklyReport.create({
@@ -86,5 +100,5 @@ export async function POST(req: Request) {
     rfqs:        rfqs        ?? 0,
   });
 
-  return Response.json(toRow(created.toObject()), { status: 201 });
+  return Response.json(toRow(created.toObject() as unknown as ReportShape), { status: 201 });
 }
