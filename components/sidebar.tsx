@@ -17,6 +17,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   ChevronDown,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
   { kind: "link", href: "/", label: "Overview", icon: LayoutDashboard, minRole: "admin" },
   { kind: "link", href: "/scripts", label: "Scripts", icon: Play, minRole: "admin" },
   { kind: "link", href: "/backlinks", label: "Backlinks", icon: Link2, minRole: "admin" },
+  { kind: "link", href: "/websites",  label: "Websites",  icon: Globe,  minRole: "admin" },
   {
     kind: "group",
     label: "Content Request",
