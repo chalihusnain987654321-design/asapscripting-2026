@@ -78,7 +78,7 @@ export function MissedReportGuard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date: missedDate, type: "public-holiday" }),
     });
-    if (!res.ok) { setLoading(false); setError("Something went wrong. Please try again."); return; }
+    if (!res.ok) { setLoading(false); const d = await res.json().catch(() => ({})); setError(d.error ?? "Something went wrong. Please try again."); return; }
     await checkMissed();
   }
 

@@ -16,7 +16,7 @@ const DailyReportSchema = new Schema<IDailyReport>(
     userName: { type: String, required: true },
     date:     { type: Date,   required: true },
     report:   { type: String, required: true, trim: true },
-    type:     { type: String, enum: ["report", "leave", "public-holiday"], default: "report" },
+    type:     { type: String, default: "report" },
   },
   { timestamps: true }
 );
