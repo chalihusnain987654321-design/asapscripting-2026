@@ -658,7 +658,8 @@ function BacklinkTableRow({
   onReject: () => void;
 }) {
   const canModify = !isSuperAdmin && row.userId === currentUserId;
-  const canReview = (isSuperAdmin || isSupervisor) && row.approvalStatus === "pending";
+  // allow review on any row not yet finalized (empty = old backlink, or "pending")
+  const canReview = (isSuperAdmin || isSupervisor) && row.approvalStatus !== "approved" && row.approvalStatus !== "rejected";
 
   return (
     <tr className="hover:bg-muted/30 transition-colors group">
@@ -683,11 +684,7 @@ function BacklinkTableRow({
       </td>
       <td className="px-4 py-3"><TypeBadge type={row.type} /></td>
       <td className="px-4 py-3">
-        {row.approvalStatus ? (
-          <ApprovalBadge status={row.approvalStatus} reason={row.rejectionReason} />
-        ) : (
-          <span className="text-muted-foreground text-xs">—</span>
-        )}
+        <ApprovalBadge status={row.approvalStatus} reason={row.rejectionReason} />
       </td>
       {showMember && (
         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
@@ -703,12 +700,12 @@ function BacklinkTableRow({
         {new Date(row.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "Asia/Karachi" })}
       </td>
       <td className="px-4 py-3">
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+        <div className="flex gap-1 justify-end">
           {canReview && (
             <>
               <Button
                 variant="ghost" size="sm"
-                className="h-7 w-7 p-0 text-green-600 hover:text-green-600 hover:bg-green-50"
+                className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
                 onClick={onApprove}
                 title="Approve"
               >
@@ -725,14 +722,14 @@ function BacklinkTableRow({
             </>
           )}
           {canModify && (
-            <>
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEdit}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onDelete}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
-            </>
+            </div>
           )}
         </div>
       </td>
@@ -1045,11 +1042,16 @@ function ApprovalBadge({ status, reason }: { status: string; reason?: string }) 
   if (status === "pending") {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-orange-50 text-orange-600 border-orange-200">
-        <Clock className="h-3 w-3" />Pending
+        <Clock className="h-3 w-3" />Pending Review
       </span>
     );
   }
-  return null;
+  // empty string = old backlink, not yet reviewed
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-muted text-muted-foreground border-border">
+      <Clock className="h-3 w-3" />Not Reviewed
+    </span>
+  );
 }
 
 function TypeBadge({ type }: { type: string }) {
