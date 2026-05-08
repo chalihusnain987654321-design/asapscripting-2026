@@ -162,10 +162,10 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
       {/* Add dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Add Backlink Site</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Add Backlink Sites</DialogTitle></DialogHeader>
           <AddSiteForm
-            onSaved={(site) => {
-              setSites((prev) => [site, ...prev]);
+            onSaved={(newSites) => {
+              setSites((prev) => [...newSites, ...prev]);
               setAddOpen(false);
               router.refresh();
             }}
@@ -196,10 +196,10 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
 // ─── Add Site Form ────────────────────────────────────────────────────────────
 
 function AddSiteForm({ onSaved, onCancel }: {
-  onSaved: (site: BacklinkSiteRow) => void;
+  onSaved: (sites: BacklinkSiteRow[]) => void;
   onCancel: () => void;
 }) {
-  const [url,       setUrl]       = useState("");
+  const [urlsText,  setUrlsText]  = useState("");
   const [da,        setDa]        = useState("");
   const [spamScore, setSpamScore] = useState("");
   const [niche,     setNiche]     = useState("");
@@ -207,20 +207,18 @@ function AddSiteForm({ onSaved, onCancel }: {
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
 
+  const urlCount = urlsText.split("\n").map((u) => u.trim()).filter(Boolean).length;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const urls = urlsText.split("\n").map((u) => u.trim()).filter(Boolean);
+    if (urls.length === 0) { setError("Enter at least one URL."); return; }
     setError(""); setLoading(true);
 
     const res = await fetch("/api/backlink-sites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url,
-        da:        da !== "" ? Number(da) : null,
-        spamScore: spamScore !== "" ? Number(spamScore) : null,
-        niche,
-        notes,
-      }),
+      body: JSON.stringify({ urls, da, spamScore, niche, notes }),
     });
 
     setLoading(false);
@@ -231,13 +229,21 @@ function AddSiteForm({ onSaved, onCancel }: {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
-        <Label>Site URL <span className="text-destructive">*</span></Label>
-        <Input
-          placeholder="e.g. example.com or https://example.com"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
+        <div className="flex items-center justify-between">
+          <Label>Site URLs <span className="text-destructive">*</span></Label>
+          {urlCount > 0 && (
+            <span className="text-xs text-muted-foreground">{urlCount} site{urlCount !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+        <textarea
+          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+          rows={6}
+          placeholder={"example.com\nhttps://another-site.com\nthirdsite.net\n…"}
+          value={urlsText}
+          onChange={(e) => setUrlsText(e.target.value)}
           required
         />
+        <p className="text-xs text-muted-foreground">One URL per line. DA, Spam Score, Niche, and Notes will apply to all.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -269,8 +275,8 @@ function AddSiteForm({ onSaved, onCancel }: {
         <Label>Notes</Label>
         <textarea
           className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-          rows={3}
-          placeholder="Any notes about this site (optional)"
+          rows={2}
+          placeholder="Any notes about these sites (optional)"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
@@ -280,9 +286,9 @@ function AddSiteForm({ onSaved, onCancel }: {
 
       <div className="flex gap-2 justify-end pt-1">
         <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Cancel</Button>
-        <Button type="submit" disabled={loading || !url.trim()}>
+        <Button type="submit" disabled={loading || urlCount === 0}>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-          Add Site
+          Add {urlCount > 0 ? `${urlCount} Site${urlCount !== 1 ? "s" : ""}` : "Sites"}
         </Button>
       </div>
     </form>
