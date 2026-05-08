@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Loader2, Link2, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 export interface BacklinkSiteRow {
   id:          string;
@@ -28,10 +30,10 @@ interface Props {
 
 export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId }: Props) {
   const router = useRouter();
-  const [sites,     setSites]     = useState(initial);
-  const [addOpen,   setAddOpen]   = useState(false);
-  const [deleteId,  setDeleteId]  = useState<string | null>(null);
-  const [deleting,  setDeleting]  = useState(false);
+  const [sites,    setSites]    = useState(initial);
+  const [addOpen,  setAddOpen]  = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const isSuperAdmin = viewerRole === "super-admin";
 
@@ -65,7 +67,7 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
         </div>
         <Button onClick={() => setAddOpen(true)}>
           <Plus className="h-4 w-4" />
-          Add Site
+          Add Sites
         </Button>
       </div>
 
@@ -159,20 +161,27 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
         </div>
       )}
 
-      {/* Add dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Add Backlink Sites</DialogTitle></DialogHeader>
-          <AddSiteForm
-            onSaved={(newSites) => {
-              setSites((prev) => [...newSites, ...prev]);
-              setAddOpen(false);
-              router.refresh();
-            }}
-            onCancel={() => setAddOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      {/* Add sheet */}
+      <Sheet open={addOpen} onOpenChange={setAddOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col gap-0 p-0">
+          <SheetHeader className="px-6 py-4 border-b shrink-0">
+            <SheetTitle>Import Backlink Sites</SheetTitle>
+            <p className="text-sm text-muted-foreground">
+              Copy 3 columns from Google Sheets (URL · DA · Spam Score) and paste below.
+            </p>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto">
+            <AddSiteForm
+              onSaved={(newSites) => {
+                setSites((prev) => [...newSites, ...prev]);
+                setAddOpen(false);
+                router.refresh();
+              }}
+              onCancel={() => setAddOpen(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Delete confirm */}
       <Dialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
@@ -193,32 +202,86 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
   );
 }
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ParsedRow {
+  url:       string;
+  da:        string;
+  spamScore: string;
+  valid:     boolean;
+}
+
+// ─── TSV parser (Google Sheets copy format) ───────────────────────────────────
+
+function parseTSV(text: string): ParsedRow[] {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/\r$/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      const cols  = line.split("\t");
+      const url   = cols[0]?.trim() ?? "";
+      const da    = cols[1]?.trim().replace(/[^0-9.]/g, "") ?? "";
+      const spam  = cols[2]?.trim().replace(/[^0-9.]/g, "") ?? "";
+      return { url, da, spamScore: spam, valid: url.length > 0 };
+    })
+    .filter((r) => r.url);
+}
+
 // ─── Add Site Form ────────────────────────────────────────────────────────────
 
 function AddSiteForm({ onSaved, onCancel }: {
   onSaved: (sites: BacklinkSiteRow[]) => void;
   onCancel: () => void;
 }) {
-  const [urlsText,  setUrlsText]  = useState("");
-  const [da,        setDa]        = useState("");
-  const [spamScore, setSpamScore] = useState("");
-  const [niche,     setNiche]     = useState("");
-  const [notes,     setNotes]     = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
+  const [rows,     setRows]     = useState<ParsedRow[]>([]);
+  const [niche,    setNiche]    = useState("");
+  const [notes,    setNotes]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+  const [pasted,   setPasted]   = useState(false);
+  const pasteRef   = useRef<HTMLTextAreaElement>(null);
 
-  const urlCount = urlsText.split("\n").map((u) => u.trim()).filter(Boolean).length;
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text");
+    const parsed = parseTSV(text);
+    setRows(parsed);
+    setPasted(true);
+    setError("");
+  }
+
+  function removeRow(i: number) {
+    setRows((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function updateCell(i: number, field: keyof ParsedRow, value: string) {
+    setRows((prev) =>
+      prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r)
+    );
+  }
+
+  function reset() {
+    setRows([]);
+    setPasted(false);
+    setError("");
+    setTimeout(() => pasteRef.current?.focus(), 50);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const urls = urlsText.split("\n").map((u) => u.trim()).filter(Boolean);
-    if (urls.length === 0) { setError("Enter at least one URL."); return; }
+    const valid = rows.filter((r) => r.url.trim());
+    if (valid.length === 0) { setError("No valid rows to import."); return; }
     setError(""); setLoading(true);
 
     const res = await fetch("/api/backlink-sites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls, da, spamScore, niche, notes }),
+      body: JSON.stringify({
+        sites: valid.map((r) => ({ url: r.url.trim(), da: r.da, spamScore: r.spamScore })),
+        niche,
+        notes,
+      }),
     });
 
     setLoading(false);
@@ -227,69 +290,154 @@ function AddSiteForm({ onSaved, onCancel }: {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <Label>Site URLs <span className="text-destructive">*</span></Label>
-          {urlCount > 0 && (
-            <span className="text-xs text-muted-foreground">{urlCount} site{urlCount !== 1 ? "s" : ""}</span>
-          )}
-        </div>
-        <textarea
-          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-          rows={6}
-          placeholder={"example.com\nhttps://another-site.com\nthirdsite.net\n…"}
-          value={urlsText}
-          onChange={(e) => setUrlsText(e.target.value)}
-          required
-        />
-        <p className="text-xs text-muted-foreground">One URL per line. DA, Spam Score, Niche, and Notes will apply to all.</p>
-      </div>
+    <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>DA (Domain Authority)</Label>
-          <Input
-            type="number" min="0" max="100" placeholder="e.g. 35"
-            value={da} onChange={(e) => setDa(e.target.value)}
-          />
+      {/* Step 1 — paste zone */}
+      {!pasted ? (
+        <div className="space-y-2">
+          <Label>Paste from Google Sheets</Label>
+          <div className="relative">
+            <textarea
+              ref={pasteRef}
+              autoFocus
+              onPaste={handlePaste}
+              readOnly
+              placeholder=""
+              className="w-full h-52 rounded-xl border-2 border-dashed border-muted-foreground/25 bg-muted/20 text-sm resize-none focus-visible:outline-none focus-visible:border-primary/50 focus-visible:bg-primary/5 transition-colors cursor-pointer"
+            />
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-3">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                <ClipboardPaste className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium">Click here, then press Ctrl+V</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Select 3 columns in Google Sheets: <span className="font-medium">URL · DA · Spam Score</span>
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg bg-muted/40 border px-4 py-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">How to copy from Google Sheets:</p>
+            <p>1. Select the 3 columns (URL, DA, Spam Score) — header row optional</p>
+            <p>2. Press <kbd className="px-1.5 py-0.5 rounded border bg-background font-mono">Ctrl+C</kbd></p>
+            <p>3. Click the paste zone above and press <kbd className="px-1.5 py-0.5 rounded border bg-background font-mono">Ctrl+V</kbd></p>
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label>Spam Score (%)</Label>
-          <Input
-            type="number" min="0" max="100" placeholder="e.g. 3"
-            value={spamScore} onChange={(e) => setSpamScore(e.target.value)}
-          />
+      ) : (
+        /* Step 2 — preview table */
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>{rows.length} site{rows.length !== 1 ? "s" : ""} ready to import</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Review and edit if needed. Click × to remove a row.</p>
+            </div>
+            <button
+              type="button"
+              onClick={reset}
+              className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+            >
+              Paste again
+            </button>
+          </div>
+
+          <div className="rounded-lg border overflow-hidden">
+            <div className="max-h-72 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-muted/60 border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">#</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">URL</th>
+                    <th className="text-center px-3 py-2 font-medium text-muted-foreground w-16">DA</th>
+                    <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Spam %</th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {rows.map((row, i) => (
+                    <tr key={i} className={cn("group", !row.url.trim() && "bg-red-50 dark:bg-red-950/20")}>
+                      <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                      <td className="px-3 py-1.5">
+                        <input
+                          type="text"
+                          value={row.url}
+                          onChange={(e) => updateCell(i, "url", e.target.value)}
+                          className="w-full bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 -mx-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <input
+                          type="text"
+                          value={row.da}
+                          onChange={(e) => updateCell(i, "da", e.target.value)}
+                          placeholder="—"
+                          className="w-12 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <input
+                          type="text"
+                          value={row.spamScore}
+                          onChange={(e) => updateCell(i, "spamScore", e.target.value)}
+                          placeholder="—"
+                          className="w-14 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => removeRow(i)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="space-y-1.5">
-        <Label>Niche / Category</Label>
-        <Input
-          placeholder="e.g. Aviation, Technology"
-          value={niche} onChange={(e) => setNiche(e.target.value)}
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label>Notes</Label>
-        <textarea
-          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-          rows={2}
-          placeholder="Any notes about these sites (optional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </div>
+      {/* Optional shared fields */}
+      {pasted && rows.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Niche / Category <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input
+              placeholder="e.g. Aviation"
+              value={niche}
+              onChange={(e) => setNiche(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input
+              placeholder="Any notes…"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex gap-2 justify-end pt-1">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Cancel</Button>
-        <Button type="submit" disabled={loading || urlCount === 0}>
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-          Add {urlCount > 0 ? `${urlCount} Site${urlCount !== 1 ? "s" : ""}` : "Sites"}
+        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
+          Cancel
         </Button>
+        {pasted && rows.length > 0 && (
+          <Button type="submit" disabled={loading || rows.filter((r) => r.url.trim()).length === 0}>
+            {loading
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Check className="h-4 w-4" />
+            }
+            Import {rows.filter((r) => r.url.trim()).length} Site{rows.filter((r) => r.url.trim()).length !== 1 ? "s" : ""}
+          </Button>
+        )}
       </div>
     </form>
   );

@@ -39,34 +39,39 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { urls, da, spamScore, niche, notes } = body as {
-    urls: string[];
-    da?: string | number;
-    spamScore?: string | number;
+  // Accept per-row sites array: [{ url, da?, spamScore? }] + shared niche/notes
+  const { sites, niche, notes } = body as {
+    sites: Array<{ url: string; da?: string | number; spamScore?: string | number }>;
     niche?: string;
     notes?: string;
   };
 
-  if (!Array.isArray(urls) || urls.length === 0) {
-    return Response.json({ error: "At least one URL is required." }, { status: 400 });
+  if (!Array.isArray(sites) || sites.length === 0) {
+    return Response.json({ error: "At least one site is required." }, { status: 400 });
   }
 
-  const cleanUrls = urls.map((u) => u.trim()).filter(Boolean);
-  if (cleanUrls.length === 0) {
-    return Response.json({ error: "At least one URL is required." }, { status: 400 });
+  const cleanSites = sites.map((s) => ({ ...s, url: String(s.url).trim() })).filter((s) => s.url);
+  if (cleanSites.length === 0) {
+    return Response.json({ error: "At least one valid URL is required." }, { status: 400 });
   }
 
   await connectDB();
 
-  const daVal        = da != null && da !== "" ? Number(da) : null;
-  const spamVal      = spamScore != null && spamScore !== "" ? Number(spamScore) : null;
-  const nicheVal     = niche?.trim() ?? "";
-  const notesVal     = notes?.trim() ?? "";
-  const addedBy      = session.user.id;
-  const addedByName  = session.user.name ?? "";
+  const nicheVal    = niche?.trim() ?? "";
+  const notesVal    = notes?.trim() ?? "";
+  const addedBy     = session.user.id;
+  const addedByName = session.user.name ?? "";
 
   const created = await BacklinkSite.insertMany(
-    cleanUrls.map((url) => ({ url, da: daVal, spamScore: spamVal, niche: nicheVal, notes: notesVal, addedBy, addedByName }))
+    cleanSites.map((s) => ({
+      url:       s.url,
+      da:        s.da != null && s.da !== "" ? Number(s.da) : null,
+      spamScore: s.spamScore != null && s.spamScore !== "" ? Number(s.spamScore) : null,
+      niche:     nicheVal,
+      notes:     notesVal,
+      addedBy,
+      addedByName,
+    }))
   );
 
   return Response.json(
