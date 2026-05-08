@@ -207,10 +207,9 @@ export function BacklinksClient({
     router.refresh();
   }
 
-  function onReviewDone(row: BacklinkRow) {
-    setRows((prev) => prev.map((r) => (r.id === row.id ? row : r)));
+  function onReviewDone(updated: BacklinkRow) {
+    setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     setRejectRow(null);
-    router.refresh();
   }
 
   async function confirmDelete() {
