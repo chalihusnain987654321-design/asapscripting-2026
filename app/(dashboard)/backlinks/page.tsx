@@ -136,6 +136,7 @@ export default async function BacklinksPage({
     targetWebsiteId: (b as Record<string, unknown>).targetWebsiteId as string ?? "",
     approvalStatus:  (b as Record<string, unknown>).approvalStatus as string ?? "",
     rejectionReason: (b as Record<string, unknown>).rejectionReason as string ?? "",
+    rejectedByName:  (b as Record<string, unknown>).rejectedByName as string ?? "",
     createdAt:       b.createdAt.toISOString(),
   }));
 

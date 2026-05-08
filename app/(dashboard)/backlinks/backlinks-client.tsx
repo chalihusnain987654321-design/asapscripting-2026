@@ -35,6 +35,7 @@ export interface BacklinkRow {
   targetWebsiteId: string;
   approvalStatus: string;
   rejectionReason: string;
+  rejectedByName: string;
   createdAt: string;
 }
 
@@ -694,8 +695,12 @@ function BacklinkTableRow({
         )}
       </td>
       <td className="px-4 py-3"><TypeBadge type={row.type} /></td>
-      <td className="px-4 py-3">
-        <ApprovalBadge status={row.approvalStatus} reason={row.rejectionReason} />
+      <td className="px-4 py-3 max-w-[180px]">
+        <ApprovalBadge
+          status={row.approvalStatus}
+          reason={row.rejectionReason}
+          rejectedByName={row.rejectedByName}
+        />
       </td>
       {showMember && (
         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
@@ -1039,7 +1044,11 @@ function EditBacklinkForm({ initial, onSuccess, onCancel }: {
 
 // ─── Badges & helpers ─────────────────────────────────────────────────────────
 
-function ApprovalBadge({ status, reason }: { status: string; reason?: string }) {
+function ApprovalBadge({ status, reason, rejectedByName }: {
+  status: string;
+  reason?: string;
+  rejectedByName?: string;
+}) {
   if (status === "approved") {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-green-50 text-green-700 border-green-200">
@@ -1049,12 +1058,17 @@ function ApprovalBadge({ status, reason }: { status: string; reason?: string }) 
   }
   if (status === "rejected") {
     return (
-      <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 text-red-700 border-red-200 cursor-help"
-        title={reason ? `Reason: ${reason}` : undefined}
-      >
-        <XCircle className="h-3 w-3" />Rejected
-      </span>
+      <div className="space-y-1">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 text-red-700 border-red-200">
+          <XCircle className="h-3 w-3" />Rejected
+        </span>
+        {rejectedByName && (
+          <p className="text-xs text-muted-foreground">by {rejectedByName}</p>
+        )}
+        {reason && (
+          <p className="text-xs text-red-600 leading-snug">{reason}</p>
+        )}
+      </div>
     );
   }
   if (status === "pending") {
@@ -1064,7 +1078,6 @@ function ApprovalBadge({ status, reason }: { status: string; reason?: string }) 
       </span>
     );
   }
-  // empty string = old backlink, not yet reviewed
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-muted text-muted-foreground border-border">
       <Clock className="h-3 w-3" />Not Reviewed

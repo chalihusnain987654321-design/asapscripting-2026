@@ -20,6 +20,7 @@ function toRow(b: Record<string, unknown> & { _id: { toString(): string }; creat
     targetWebsiteId: b.targetWebsiteId ?? "",
     approvalStatus:  b.approvalStatus ?? "",
     rejectionReason: b.rejectionReason ?? "",
+    rejectedByName:  b.rejectedByName ?? "",
     createdAt:       b.createdAt.toISOString(),
   };
 }
@@ -58,6 +59,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     existing.approvalStatus  = body.action === "approve" ? "approved" : "rejected";
     existing.rejectionReason = body.action === "reject" ? (body.rejectionReason ?? "") : "";
+    existing.rejectedByName  = body.action === "reject" ? (session.user.name ?? "") : "";
     await existing.save();
     return Response.json(toRow(existing.toObject() as unknown as Record<string, unknown> & { _id: { toString(): string }; createdAt: Date }));
   }

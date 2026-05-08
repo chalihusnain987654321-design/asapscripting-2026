@@ -30,6 +30,7 @@ export interface IBacklink extends Document {
   targetWebsiteId: string;
   approvalStatus:  string; // "" | "pending" | "approved" | "rejected"
   rejectionReason: string;
+  rejectedByName:  string;
   createdAt:       Date;
   updatedAt:       Date;
 }
@@ -61,6 +62,7 @@ const BacklinkSchema = new Schema<IBacklink>(
     targetWebsiteId: { type: String, default: "" },
     approvalStatus:  { type: String, default: "" },
     rejectionReason: { type: String, default: "" },
+    rejectedByName:  { type: String, default: "" },
   },
   { timestamps: true }
 );

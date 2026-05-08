@@ -74,6 +74,7 @@ export async function GET(req: Request) {
       targetWebsiteId: b.targetWebsiteId ?? "",
       approvalStatus:  b.approvalStatus ?? "",
       rejectionReason: b.rejectionReason ?? "",
+      rejectedByName:  (b as unknown as Record<string, unknown>).rejectedByName as string ?? "",
       createdAt:       b.createdAt.toISOString(),
     })),
     total,
