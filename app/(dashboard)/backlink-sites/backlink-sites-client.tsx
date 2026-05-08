@@ -85,8 +85,6 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">URL</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">DA</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Spam Score</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Niche</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Notes</th>
                   {isSuperAdmin && (
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Added By</th>
                   )}
@@ -124,10 +122,6 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{site.niche || "—"}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground max-w-[200px]">
-                      <span className="truncate block" title={site.notes}>{site.notes || "—"}</span>
                     </td>
                     {isSuperAdmin && (
                       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
