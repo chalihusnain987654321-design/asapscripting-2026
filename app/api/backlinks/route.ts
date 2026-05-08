@@ -1,33 +1,35 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { connectDB, Backlink } from "@/lib/mongodb";
+import { connectDB, Backlink, BacklinkSite } from "@/lib/mongodb";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/backlinks — all users see all backlinks (filtered)
+// GET /api/backlinks — filtered list with pagination
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const search = searchParams.get("search")?.trim() ?? "";
-  const websiteName = searchParams.get("websiteName")?.trim() ?? "";
-  const type = searchParams.get("type")?.trim() ?? "";
-  const status = searchParams.get("status")?.trim() ?? "";
-  const userId = searchParams.get("userId")?.trim() ?? "";
-  const from = searchParams.get("from")?.trim() ?? "";
-  const to = searchParams.get("to")?.trim() ?? "";
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-  const limit = 20;
+  const search         = searchParams.get("search")?.trim() ?? "";
+  const websiteName    = searchParams.get("websiteName")?.trim() ?? "";
+  const type           = searchParams.get("type")?.trim() ?? "";
+  const status         = searchParams.get("status")?.trim() ?? "";
+  const approvalStatus = searchParams.get("approvalStatus")?.trim() ?? "";
+  const userId         = searchParams.get("userId")?.trim() ?? "";
+  const from           = searchParams.get("from")?.trim() ?? "";
+  const to             = searchParams.get("to")?.trim() ?? "";
+  const page           = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+  const limit          = 20;
 
   await connectDB();
 
   const filter: Record<string, unknown> = {};
 
-  if (userId) filter.userId = userId;
-  if (websiteName) filter.websiteName = { $regex: websiteName, $options: "i" };
-  if (type) filter.type = type;
-  if (status) filter.status = status;
+  if (userId)         filter.userId = userId;
+  if (websiteName)    filter.websiteName = { $regex: websiteName, $options: "i" };
+  if (type)           filter.type = type;
+  if (status)         filter.status = status;
+  if (approvalStatus) filter.approvalStatus = approvalStatus;
 
   if (from || to) {
     const dateFilter: Record<string, Date> = {};
@@ -42,10 +44,10 @@ export async function GET(req: Request) {
 
   if (search) {
     filter.$or = [
-      { websiteName: { $regex: search, $options: "i" } },
-      { backlinkUrl: { $regex: search, $options: "i" } },
-      { targetUrl: { $regex: search, $options: "i" } },
-      { anchorText: { $regex: search, $options: "i" } },
+      { websiteName:  { $regex: search, $options: "i" } },
+      { backlinkUrl:  { $regex: search, $options: "i" } },
+      { sourceSiteUrl: { $regex: search, $options: "i" } },
+      { anchorText:   { $regex: search, $options: "i" } },
     ];
   }
 
@@ -56,18 +58,23 @@ export async function GET(req: Request) {
 
   return Response.json({
     backlinks: rows.map((b) => ({
-      id: b._id.toString(),
-      userId: b.userId,
-      userName: b.userName,
-      websiteName: b.websiteName,
-      targetUrl: b.targetUrl,
-      backlinkUrl: b.backlinkUrl,
-      anchorText: b.anchorText,
-      type: b.type,
-      da: b.da,
-      status: b.status,
-      notes: b.notes,
-      createdAt: b.createdAt.toISOString(),
+      id:              b._id.toString(),
+      userId:          b.userId,
+      userName:        b.userName,
+      websiteName:     b.websiteName,
+      targetUrl:       b.targetUrl ?? "",
+      backlinkUrl:     b.backlinkUrl,
+      anchorText:      b.anchorText ?? "",
+      type:            b.type,
+      da:              b.da ?? null,
+      status:          b.status,
+      notes:           b.notes ?? "",
+      sourceSiteId:    b.sourceSiteId ?? "",
+      sourceSiteUrl:   b.sourceSiteUrl ?? "",
+      targetWebsiteId: b.targetWebsiteId ?? "",
+      approvalStatus:  b.approvalStatus ?? "",
+      rejectionReason: b.rejectionReason ?? "",
+      createdAt:       b.createdAt.toISOString(),
     })),
     total,
     page,
@@ -75,62 +82,84 @@ export async function GET(req: Request) {
   });
 }
 
-// POST /api/backlinks — bulk insert (one record per URL)
+// POST /api/backlinks — new workflow: one backlink per source site + target website
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json();
-  const { websiteName, backlinkUrls, type, status, date } = body;
-
-  if (!websiteName?.trim()) {
-    return Response.json({ error: "Website name is required." }, { status: 400 });
+  if (session.user.role === "super-admin") {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const urls: string[] = (backlinkUrls as string[])
-    .map((u: string) => u.trim())
-    .filter(Boolean);
+  const body = await req.json();
+  const { targetWebsiteId, websiteName, sourceSiteId, backlinkUrl, type, date } = body;
 
-  if (urls.length === 0) {
-    return Response.json({ error: "At least one backlink URL is required." }, { status: 400 });
+  if (!websiteName?.trim()) {
+    return Response.json({ error: "Target website is required." }, { status: 400 });
+  }
+  if (!sourceSiteId) {
+    return Response.json({ error: "Source site is required." }, { status: 400 });
+  }
+  if (!backlinkUrl?.trim()) {
+    return Response.json({ error: "Backlink URL is required." }, { status: 400 });
   }
 
   await connectDB();
 
-  const createdAt = date ? new Date(date) : new Date();
+  // Fetch source site URL
+  const sourceSite = await BacklinkSite.findById(sourceSiteId).lean();
+  if (!sourceSite) {
+    return Response.json({ error: "Source site not found." }, { status: 404 });
+  }
 
-  const docs = urls.map((url) => ({
-    userId: session.user.id,
-    userName: session.user.name ?? "",
-    userEmail: session.user.email ?? "",
-    websiteName: websiteName.trim(),
-    backlinkUrl: url,
-    targetUrl: "",
-    anchorText: "",
-    type: type ?? "other",
-    da: null,
-    status: status ?? "live",
-    notes: "",
-    createdAt,
-  }));
+  // Unique check: block if an active (pending/approved) backlink already exists for this pair
+  const duplicate = await Backlink.findOne({
+    sourceSiteId,
+    targetWebsiteId: targetWebsiteId ?? "",
+    approvalStatus: { $in: ["pending", "approved"] },
+  });
+  if (duplicate) {
+    return Response.json({
+      error: `A backlink from "${sourceSite.url}" to "${websiteName}" is already pending or approved.`,
+    }, { status: 409 });
+  }
 
-  const created = await Backlink.insertMany(docs);
+  const created = await Backlink.create({
+    userId:          session.user.id,
+    userName:        session.user.name ?? "",
+    userEmail:       session.user.email ?? "",
+    websiteName:     websiteName.trim(),
+    targetUrl:       "",
+    backlinkUrl:     backlinkUrl.trim(),
+    anchorText:      "",
+    type:            type ?? "other",
+    da:              null,
+    status:          "live",
+    notes:           "",
+    sourceSiteId,
+    sourceSiteUrl:   sourceSite.url,
+    targetWebsiteId: targetWebsiteId ?? "",
+    approvalStatus:  "pending",
+    rejectionReason: "",
+    createdAt:       date ? new Date(date) : new Date(),
+  });
 
-  return Response.json(
-    created.map((b) => ({
-      id: b._id.toString(),
-      userId: b.userId,
-      userName: b.userName,
-      websiteName: b.websiteName,
-      targetUrl: b.targetUrl,
-      backlinkUrl: b.backlinkUrl,
-      anchorText: b.anchorText,
-      type: b.type,
-      da: b.da,
-      status: b.status,
-      notes: b.notes,
-      createdAt: b.createdAt.toISOString(),
-    })),
-    { status: 201 }
-  );
+  return Response.json({
+    id:              created._id.toString(),
+    userId:          created.userId,
+    userName:        created.userName,
+    websiteName:     created.websiteName,
+    targetUrl:       created.targetUrl,
+    backlinkUrl:     created.backlinkUrl,
+    anchorText:      created.anchorText,
+    type:            created.type,
+    da:              created.da,
+    status:          created.status,
+    notes:           created.notes,
+    sourceSiteId:    created.sourceSiteId,
+    sourceSiteUrl:   created.sourceSiteUrl,
+    targetWebsiteId: created.targetWebsiteId,
+    approvalStatus:  created.approvalStatus,
+    rejectionReason: created.rejectionReason,
+    createdAt:       created.createdAt.toISOString(),
+  }, { status: 201 });
 }

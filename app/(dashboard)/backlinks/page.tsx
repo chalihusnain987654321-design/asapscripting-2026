@@ -1,8 +1,15 @@
 import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { connectDB, Backlink, User, Group } from "@/lib/mongodb";
-import { BacklinksClient, type BacklinkRow, type TeamMember, type GroupOption } from "./backlinks-client";
+import { connectDB, Backlink, User, Group, Website, BacklinkSite } from "@/lib/mongodb";
+import {
+  BacklinksClient,
+  type BacklinkRow,
+  type TeamMember,
+  type GroupOption,
+  type BacklinkSiteOption,
+  type AssignedWebsiteOption,
+} from "./backlinks-client";
 
 const PAGE_SIZE = 20;
 
@@ -24,7 +31,6 @@ export default async function BacklinksPage({
   let groupMemberMap: Record<string, string[]> = {};
 
   if (isSuperAdmin) {
-    // Super-admin: all active non-admin members + all groups
     teamMembers = (
       await User.find({ isActive: true, role: { $ne: "super-admin" } }).sort({ name: 1 }).lean()
     ).map((u) => ({ id: u._id.toString(), name: u.name }));
@@ -37,7 +43,6 @@ export default async function BacklinksPage({
     }));
     groupMemberMap = Object.fromEntries(groups.map((g) => [g.id, g.memberUserIds]));
   } else if (isSupervisor) {
-    // Supervisor: only their group members
     const myGroup = await Group.findOne({ leadUserId: currentUserId }).lean();
     if (myGroup) {
       const memberIds = myGroup.memberUserIds.map((id) => id.toString());
@@ -45,22 +50,19 @@ export default async function BacklinksPage({
       teamMembers = (
         await User.find({ _id: { $in: allIds }, isActive: true }).sort({ name: 1 }).lean()
       ).map((u) => ({ id: u._id.toString(), name: u.name }));
-    } else {
-      // No group assigned — only own data
-      teamMembers = [];
     }
   }
 
-  // Selected tab / team
   const canViewTeam = isSuperAdmin || isSupervisor;
-  const selectedTab = canViewTeam ? (searchParams.tab ?? "") : currentUserId;
+  const selectedTab    = canViewTeam ? (searchParams.tab ?? "") : currentUserId;
   const selectedTeamId = isSuperAdmin ? (searchParams.teamId ?? "") : "";
 
-  const type = searchParams.type?.trim() ?? "";
-  const status = searchParams.status?.trim() ?? "";
-  const from = searchParams.from?.trim() ?? "";
-  const to = searchParams.to?.trim() ?? "";
-  const page = Math.max(1, parseInt(searchParams.page ?? "1", 10));
+  const type           = searchParams.type?.trim() ?? "";
+  const status         = searchParams.status?.trim() ?? "";
+  const approvalStatus = searchParams.approvalStatus?.trim() ?? "";
+  const from           = searchParams.from?.trim() ?? "";
+  const to             = searchParams.to?.trim() ?? "";
+  const page           = Math.max(1, parseInt(searchParams.page ?? "1", 10));
 
   const filter: Record<string, unknown> = {};
 
@@ -70,9 +72,7 @@ export default async function BacklinksPage({
     } else if (selectedTab) {
       filter.userId = selectedTab;
     }
-    // else: no filter = all
   } else if (isSupervisor) {
-    // Supervisor can only see their own group members (including themselves)
     const allowedIds = teamMembers.map((m) => m.id);
     if (selectedTab && allowedIds.includes(selectedTab)) {
       filter.userId = selectedTab;
@@ -83,8 +83,9 @@ export default async function BacklinksPage({
     filter.userId = currentUserId;
   }
 
-  if (type) filter.type = type;
-  if (status) filter.status = status;
+  if (type)           filter.type = type;
+  if (status)         filter.status = status;
+  if (approvalStatus) filter.approvalStatus = approvalStatus;
   if (from || to) {
     const dateFilter: Record<string, Date> = {};
     if (from) dateFilter.$gte = new Date(from);
@@ -96,12 +97,13 @@ export default async function BacklinksPage({
     filter.createdAt = dateFilter;
   }
 
-  const [rawRows, total, liveCount, pendingCount, brokenCount] = await Promise.all([
+  const [rawRows, total, liveCount, pendingCount, brokenCount, pendingReviewCount] = await Promise.all([
     Backlink.find(filter).sort({ createdAt: -1 }).skip((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).lean(),
     Backlink.countDocuments(filter),
     Backlink.countDocuments({ ...filter, status: "live" }),
     Backlink.countDocuments({ ...filter, status: "pending" }),
     Backlink.countDocuments({ ...filter, status: "broken" }),
+    Backlink.countDocuments({ ...filter, approvalStatus: "pending" }),
   ]);
 
   // Per-member and per-group counts
@@ -118,26 +120,50 @@ export default async function BacklinksPage({
   }
 
   const rows: BacklinkRow[] = rawRows.map((b) => ({
-    id: b._id.toString(),
-    userId: b.userId,
-    userName: b.userName,
-    websiteName: b.websiteName,
-    targetUrl: b.targetUrl,
-    backlinkUrl: b.backlinkUrl,
-    anchorText: b.anchorText,
-    type: b.type,
-    da: b.da ?? null,
-    status: b.status as BacklinkRow["status"],
-    notes: b.notes ?? "",
-    createdAt: b.createdAt.toISOString(),
+    id:              b._id.toString(),
+    userId:          b.userId,
+    userName:        b.userName,
+    websiteName:     b.websiteName,
+    targetUrl:       b.targetUrl ?? "",
+    backlinkUrl:     b.backlinkUrl,
+    anchorText:      b.anchorText ?? "",
+    type:            b.type,
+    da:              b.da ?? null,
+    status:          b.status as BacklinkRow["status"],
+    notes:           b.notes ?? "",
+    sourceSiteId:    (b as Record<string, unknown>).sourceSiteId as string ?? "",
+    sourceSiteUrl:   (b as Record<string, unknown>).sourceSiteUrl as string ?? "",
+    targetWebsiteId: (b as Record<string, unknown>).targetWebsiteId as string ?? "",
+    approvalStatus:  (b as Record<string, unknown>).approvalStatus as string ?? "",
+    rejectionReason: (b as Record<string, unknown>).rejectionReason as string ?? "",
+    createdAt:       b.createdAt.toISOString(),
   }));
+
+  // Backlink sites for the submission form (all users need this)
+  const rawSites = await BacklinkSite.find({}).sort({ url: 1 }).lean();
+  const backlinkSites: BacklinkSiteOption[] = rawSites.map((s) => ({
+    id:        s._id.toString(),
+    url:       s.url,
+    da:        s.da ?? null,
+    spamScore: s.spamScore ?? null,
+    niche:     s.niche ?? "",
+  }));
+
+  // Assigned websites for the submission form (all non-super-admin users)
+  const assignedWebsites: AssignedWebsiteOption[] = [];
+  if (!isSuperAdmin) {
+    const myWebsites = await Website.find({ "assignedTo.userId": currentUserId }).sort({ name: 1 }).lean();
+    for (const w of myWebsites) {
+      assignedWebsites.push({ id: w._id.toString(), name: w.name });
+    }
+  }
 
   return (
     <Suspense>
       <BacklinksClient
         rows={rows}
         total={total}
-        stats={{ total, live: liveCount, pending: pendingCount, broken: brokenCount }}
+        stats={{ total, live: liveCount, pending: pendingCount, broken: brokenCount, pendingReview: pendingReviewCount }}
         page={page}
         pageSize={PAGE_SIZE}
         isSuperAdmin={isSuperAdmin}
@@ -149,7 +175,9 @@ export default async function BacklinksPage({
         groups={groups}
         groupCounts={groupCounts}
         selectedTeamId={selectedTeamId}
-        filters={{ type, status, from, to }}
+        filters={{ type, status, approvalStatus, from, to }}
+        backlinkSites={backlinkSites}
+        assignedWebsites={assignedWebsites}
       />
     </Suspense>
   );

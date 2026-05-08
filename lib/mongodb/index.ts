@@ -10,6 +10,8 @@ export { default as AuditChecklist } from "./models/AuditChecklist";
 export { default as AuditRecord } from "./models/AuditRecord";
 export { default as Website } from "./models/Website";
 export type { IWebsite, IWebsiteAssignee } from "./models/Website";
+export { default as BacklinkSite } from "./models/BacklinkSite";
+export type { IBacklinkSite } from "./models/BacklinkSite";
 export { default as WeeklyReport } from "./models/WeeklyReport";
 export type { IWeeklyReport } from "./models/WeeklyReport";
 export type { IAuditChecklist } from "./models/AuditChecklist";
