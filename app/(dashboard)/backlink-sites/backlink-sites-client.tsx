@@ -4,8 +4,6 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -234,10 +232,8 @@ function AddSiteForm({ onSaved, onCancel }: {
   onSaved: (sites: BacklinkSiteRow[]) => void;
   onCancel: () => void;
 }) {
-  const [rows,     setRows]     = useState<ParsedRow[]>([]);
-  const [niche,    setNiche]    = useState("");
-  const [notes,    setNotes]    = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [rows,    setRows]    = useState<ParsedRow[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error,    setError]    = useState("");
   const [pasted,   setPasted]   = useState(false);
   const pasteRef   = useRef<HTMLTextAreaElement>(null);
@@ -279,8 +275,6 @@ function AddSiteForm({ onSaved, onCancel }: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sites: valid.map((r) => ({ url: r.url.trim(), da: r.da, spamScore: r.spamScore })),
-        niche,
-        notes,
       }),
     });
 
@@ -397,28 +391,6 @@ function AddSiteForm({ onSaved, onCancel }: {
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Optional shared fields */}
-      {pasted && rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Niche / Category <span className="text-muted-foreground font-normal">(optional)</span></Label>
-            <Input
-              placeholder="e.g. Aviation"
-              value={niche}
-              onChange={(e) => setNiche(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
-            <Input
-              placeholder="Any notes…"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
           </div>
         </div>
       )}
