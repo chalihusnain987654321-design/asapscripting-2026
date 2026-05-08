@@ -832,11 +832,26 @@ function AddBacklinkForm({ backlinkSites, assignedWebsites, onSuccess, onCancel 
   const [date, setDate] = useState(todayPKT());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [usedSiteIds, setUsedSiteIds] = useState<string[]>([]);
 
   const hasAssigned = assignedWebsites.length > 0;
   const selectedWebsite = assignedWebsites.find((w) => w.id === targetWebsiteId);
   const websiteName = hasAssigned ? (selectedWebsite?.name ?? "") : websiteNameFree;
   const selectedSource = backlinkSites.find((s) => s.id === sourceSiteId);
+  const availableSites = backlinkSites.filter((s) => !usedSiteIds.includes(s.id));
+
+  useEffect(() => {
+    if (!targetWebsiteId) { setUsedSiteIds([]); setSourceSiteId(""); return; }
+    fetch(`/api/backlinks/used-sources?targetWebsiteId=${targetWebsiteId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const ids: string[] = d.usedSiteIds ?? [];
+        setUsedSiteIds(ids);
+        // clear selected source if it became unavailable
+        if (ids.includes(sourceSiteId)) setSourceSiteId("");
+      })
+      .catch(() => {});
+  }, [targetWebsiteId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -893,7 +908,14 @@ function AddBacklinkForm({ backlinkSites, assignedWebsites, onSuccess, onCancel 
 
       {/* Source site */}
       <div className="space-y-1.5">
-        <Label>Source Site <span className="text-destructive">*</span></Label>
+        <div className="flex items-center justify-between">
+          <Label>Source Site <span className="text-destructive">*</span></Label>
+          {usedSiteIds.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {usedSiteIds.length} already used for this website
+            </span>
+          )}
+        </div>
         <select
           className={selectClass}
           value={sourceSiteId}
@@ -901,12 +923,15 @@ function AddBacklinkForm({ backlinkSites, assignedWebsites, onSuccess, onCancel 
           required
         >
           <option value="">Select source site…</option>
-          {backlinkSites.map((s) => (
+          {availableSites.map((s) => (
             <option key={s.id} value={s.id}>
               {s.url}{s.da != null ? ` (DA ${s.da})` : ""}
             </option>
           ))}
         </select>
+        {availableSites.length === 0 && targetWebsiteId && (
+          <p className="text-xs text-yellow-600">All available source sites have already been used for this website.</p>
+        )}
         {selectedSource && (
           <p className="text-xs text-muted-foreground">
             {selectedSource.niche && <span className="mr-2">{selectedSource.niche}</span>}
