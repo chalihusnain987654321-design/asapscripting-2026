@@ -131,12 +131,12 @@ export default async function BacklinksPage({
     da:              b.da ?? null,
     status:          b.status as BacklinkRow["status"],
     notes:           b.notes ?? "",
-    sourceSiteId:    (b as Record<string, unknown>).sourceSiteId as string ?? "",
-    sourceSiteUrl:   (b as Record<string, unknown>).sourceSiteUrl as string ?? "",
-    targetWebsiteId: (b as Record<string, unknown>).targetWebsiteId as string ?? "",
-    approvalStatus:  (b as Record<string, unknown>).approvalStatus as string ?? "",
-    rejectionReason: (b as Record<string, unknown>).rejectionReason as string ?? "",
-    rejectedByName:  (b as Record<string, unknown>).rejectedByName as string ?? "",
+    sourceSiteId:    (b as unknown as Record<string, unknown>).sourceSiteId as string ?? "",
+    sourceSiteUrl:   (b as unknown as Record<string, unknown>).sourceSiteUrl as string ?? "",
+    targetWebsiteId: (b as unknown as Record<string, unknown>).targetWebsiteId as string ?? "",
+    approvalStatus:  (b as unknown as Record<string, unknown>).approvalStatus as string ?? "",
+    rejectionReason: (b as unknown as Record<string, unknown>).rejectionReason as string ?? "",
+    rejectedByName:  (b as unknown as Record<string, unknown>).rejectedByName as string ?? "",
     createdAt:       b.createdAt.toISOString(),
   }));
 
