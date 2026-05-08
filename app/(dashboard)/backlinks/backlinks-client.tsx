@@ -131,7 +131,8 @@ export function BacklinksClient({
   const [editItem, setEditItem] = useState<BacklinkRow | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [rejectRow, setRejectRow] = useState<BacklinkRow | null>(null);
+  const [rejectRow,   setRejectRow]   = useState<BacklinkRow | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
 
@@ -227,13 +228,22 @@ export function BacklinksClient({
   }
 
   async function approveRow(row: BacklinkRow) {
-    const res = await fetch(`/api/backlinks/${row.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve" }),
-    });
-    if (res.ok) onReviewDone(await res.json());
-    else alert((await res.json()).error);
+    if (approvingId) return;
+    setApprovingId(row.id);
+    try {
+      const res = await fetch(`/api/backlinks/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve" }),
+      });
+      const data = await res.json();
+      if (res.ok) onReviewDone(data);
+      else alert(data.error ?? "Approval failed.");
+    } catch {
+      alert("Network error. Please try again.");
+    } finally {
+      setApprovingId(null);
+    }
   }
 
   const showMember = canViewTeam && isAllTab;
@@ -527,6 +537,7 @@ export function BacklinksClient({
                       isSupervisor={isSupervisor}
                       currentUserId={currentUserId}
                       showMember={showMember}
+                      approving={approvingId === row.id}
                       onEdit={() => setEditItem(row)}
                       onDelete={() => setDeleteId(row.id)}
                       onApprove={() => approveRow(row)}
@@ -644,7 +655,7 @@ function StatCard({ icon: Icon, label, value, color }: {
 // ─── Table row ────────────────────────────────────────────────────────────────
 
 function BacklinkTableRow({
-  row, isSuperAdmin, isSupervisor, currentUserId, showMember,
+  row, isSuperAdmin, isSupervisor, currentUserId, showMember, approving,
   onEdit, onDelete, onApprove, onReject,
 }: {
   row: BacklinkRow;
@@ -652,6 +663,7 @@ function BacklinkTableRow({
   isSupervisor: boolean;
   currentUserId: string;
   showMember: boolean;
+  approving: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onApprove: () => void;
@@ -704,17 +716,24 @@ function BacklinkTableRow({
           {canReview && (
             <>
               <Button
+                type="button"
                 variant="ghost" size="sm"
                 className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
                 onClick={onApprove}
+                disabled={approving}
                 title="Approve"
               >
-                <CheckCircle2 className="h-4 w-4" />
+                {approving
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <CheckCircle2 className="h-4 w-4" />
+                }
               </Button>
               <Button
+                type="button"
                 variant="ghost" size="sm"
                 className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                 onClick={onReject}
+                disabled={approving}
                 title="Reject"
               >
                 <XCircle className="h-4 w-4" />
@@ -723,10 +742,10 @@ function BacklinkTableRow({
           )}
           {canModify && (
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEdit}>
+              <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEdit}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onDelete}>
+              <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={onDelete}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
