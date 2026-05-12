@@ -916,19 +916,38 @@ function AddBacklinkForm({ backlinkSites, assignedWebsites, onSuccess, onCancel 
             </span>
           )}
         </div>
-        <select
-          className={selectClass}
-          value={sourceSiteId}
-          onChange={(e) => setSourceSiteId(e.target.value)}
-          required
-        >
-          <option value="">Select source site…</option>
-          {availableSites.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.url}{s.da != null ? ` (DA ${s.da})` : ""}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <a
+            href={selectedSource ? selectedSource.url : undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            tabIndex={selectedSource ? 0 : -1}
+            aria-disabled={!selectedSource}
+            className={cn(
+              "h-10 w-10 shrink-0 flex items-center justify-center rounded-md border border-input transition-colors",
+              selectedSource
+                ? "bg-background text-blue-600 hover:bg-blue-50 hover:border-blue-300 cursor-pointer"
+                : "bg-muted text-muted-foreground/40 pointer-events-none"
+            )}
+            title={selectedSource ? `Open ${selectedSource.url}` : "Select a source site first"}
+            onClick={(e) => { if (!selectedSource) e.preventDefault(); }}
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+          <select
+            className={cn(selectClass, "flex-1")}
+            value={sourceSiteId}
+            onChange={(e) => setSourceSiteId(e.target.value)}
+            required
+          >
+            <option value="">Select source site…</option>
+            {availableSites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.url}{s.da != null ? ` (DA ${s.da})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
         {availableSites.length === 0 && targetWebsiteId && (
           <p className="text-xs text-yellow-600">All available source sites have already been used for this website.</p>
         )}
