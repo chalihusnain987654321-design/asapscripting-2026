@@ -918,7 +918,7 @@ function AddBacklinkForm({ backlinkSites, assignedWebsites, onSuccess, onCancel 
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={selectedSource ? selectedSource.url : undefined}
+            href={selectedSource ? (selectedSource.url.startsWith("http") ? selectedSource.url : `https://${selectedSource.url}`) : undefined}
             target="_blank"
             rel="noopener noreferrer"
             tabIndex={selectedSource ? 0 : -1}
