@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus, Trash2, Pencil, ExternalLink, ChevronLeft, ChevronRight,
   Link2, TrendingUp, Clock, AlertTriangle, Loader2, Users, ChevronDown,
@@ -833,12 +833,28 @@ function AddBacklinkForm({ backlinkSites, assignedWebsites, onSuccess, onCancel 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [usedSiteIds, setUsedSiteIds] = useState<string[]>([]);
+  const [siteDropdownOpen, setSiteDropdownOpen] = useState(false);
+  const [siteSearch, setSiteSearch] = useState("");
+  const siteDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (siteDropdownRef.current && !siteDropdownRef.current.contains(e.target as Node)) {
+        setSiteDropdownOpen(false);
+      }
+    }
+    if (siteDropdownOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [siteDropdownOpen]);
 
   const hasAssigned = assignedWebsites.length > 0;
   const selectedWebsite = assignedWebsites.find((w) => w.id === targetWebsiteId);
   const websiteName = hasAssigned ? (selectedWebsite?.name ?? "") : websiteNameFree;
   const selectedSource = backlinkSites.find((s) => s.id === sourceSiteId);
   const availableSites = backlinkSites.filter((s) => !usedSiteIds.includes(s.id));
+  const filteredSites = availableSites.filter((s) =>
+    s.url.toLowerCase().includes(siteSearch.toLowerCase())
+  );
 
   useEffect(() => {
     if (!targetWebsiteId) { setUsedSiteIds([]); setSourceSiteId(""); return; }
@@ -934,19 +950,71 @@ function AddBacklinkForm({ backlinkSites, assignedWebsites, onSuccess, onCancel 
           >
             <ExternalLink className="h-4 w-4" />
           </a>
-          <select
-            className={cn(selectClass, "flex-1")}
-            value={sourceSiteId}
-            onChange={(e) => setSourceSiteId(e.target.value)}
-            required
-          >
-            <option value="">Select source site…</option>
-            {availableSites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.url}{s.da != null ? ` (DA ${s.da})` : ""}
-              </option>
-            ))}
-          </select>
+
+          {/* Custom searchable dropdown */}
+          <div ref={siteDropdownRef} className="relative flex-1">
+            <button
+              type="button"
+              onClick={() => { setSiteDropdownOpen((v) => !v); setSiteSearch(""); }}
+              className={cn(
+                selectClass,
+                "flex items-center justify-between text-left",
+                !sourceSiteId && "text-muted-foreground"
+              )}
+            >
+              <span className="truncate">
+                {selectedSource
+                  ? `${selectedSource.url}${selectedSource.da != null ? ` (DA ${selectedSource.da})` : ""}`
+                  : "Select source site…"}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 shrink-0 ml-2 text-muted-foreground transition-transform", siteDropdownOpen && "rotate-180")} />
+            </button>
+
+            {siteDropdownOpen && (
+              <div className="absolute z-50 top-full left-0 mt-1 w-full rounded-lg border bg-card shadow-lg overflow-hidden">
+                <div className="p-2 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search sites…"
+                      value={siteSearch}
+                      onChange={(e) => setSiteSearch(e.target.value)}
+                      className="w-full h-8 pl-8 pr-3 rounded-md border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    {siteSearch && (
+                      <button type="button" onClick={() => setSiteSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2">
+                        <XIcon className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="max-h-52 overflow-y-auto py-1">
+                  {filteredSites.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-4">No sites found</p>
+                  ) : (
+                    filteredSites.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => { setSourceSiteId(s.id); setSiteDropdownOpen(false); setSiteSearch(""); }}
+                        className={cn(
+                          "w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/50 transition-colors text-left",
+                          sourceSiteId === s.id && "bg-primary/5 text-primary font-medium"
+                        )}
+                      >
+                        <span className="truncate">{s.url}</span>
+                        {s.da != null && (
+                          <span className="text-xs text-muted-foreground shrink-0 ml-2">DA {s.da}</span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         {availableSites.length === 0 && targetWebsiteId && (
           <p className="text-xs text-yellow-600">All available source sites have already been used for this website.</p>
