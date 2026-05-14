@@ -56,6 +56,7 @@ export interface BacklinkSiteOption {
   da: number | null;
   spamScore: number | null;
   niche: string;
+  reusable: boolean;
 }
 
 export interface AssignedWebsiteOption {

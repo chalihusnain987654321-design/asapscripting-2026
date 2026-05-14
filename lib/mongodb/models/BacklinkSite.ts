@@ -6,6 +6,7 @@ export interface IBacklinkSite extends Document {
   spamScore:   number | null;
   niche:       string;
   notes:       string;
+  reusable:    boolean;
   addedBy:     string;
   addedByName: string;
   createdAt:   Date;
@@ -19,6 +20,7 @@ const BacklinkSiteSchema = new Schema<IBacklinkSite>(
     spamScore:   { type: Number, default: null },
     niche:       { type: String, default: "", trim: true },
     notes:       { type: String, default: "", trim: true },
+    reusable:    { type: Boolean, default: false },
     addedBy:     { type: String, required: true },
     addedByName: { type: String, required: true },
   },

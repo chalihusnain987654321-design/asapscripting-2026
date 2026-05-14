@@ -148,6 +148,7 @@ export default async function BacklinksPage({
     da:        s.da ?? null,
     spamScore: s.spamScore ?? null,
     niche:     s.niche ?? "",
+    reusable:  (s as unknown as Record<string, unknown>).reusable as boolean ?? false,
   }));
 
   // Assigned websites for the submission form (all non-super-admin users)

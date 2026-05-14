@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check } from "lucide-react";
+import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -16,6 +16,7 @@ export interface BacklinkSiteRow {
   spamScore:   number | null;
   niche:       string;
   notes:       string;
+  reusable:    boolean;
   addedBy:     string;
   addedByName: string;
   createdAt:   string;
@@ -30,11 +31,30 @@ interface Props {
 export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId }: Props) {
   const router = useRouter();
   const [sites,    setSites]    = useState(initial);
-  const [addOpen,  setAddOpen]  = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [addOpen,    setAddOpen]    = useState(false);
+  const [deleteId,   setDeleteId]   = useState<string | null>(null);
+  const [deleting,   setDeleting]   = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const isSuperAdmin = viewerRole === "super-admin";
+  const canManage    = isSuperAdmin || viewerRole === "sub-lead";
+
+  async function toggleReusable(site: BacklinkSiteRow) {
+    if (togglingId) return;
+    setTogglingId(site.id);
+    const res = await fetch(`/api/backlink-sites/${site.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reusable: !site.reusable }),
+    });
+    setTogglingId(null);
+    if (res.ok) {
+      const updated = await res.json();
+      setSites((prev) => prev.map((s) => s.id === site.id ? { ...s, reusable: updated.reusable } : s));
+    } else {
+      alert("Failed to update.");
+    }
+  }
 
   function canDelete(site: BacklinkSiteRow) {
     return isSuperAdmin || site.addedBy === currentUserId;
@@ -85,6 +105,7 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">URL</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">DA</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Spam Score</th>
+                  <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Reusable</th>
                   {isSuperAdmin && (
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Added By</th>
                   )}
@@ -121,6 +142,38 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                         </span>
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {canManage ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleReusable(site)}
+                          disabled={togglingId === site.id}
+                          title={site.reusable ? "Click to make one-time" : "Click to make reusable"}
+                          className={cn(
+                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                            site.reusable
+                              ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                              : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                          )}
+                        >
+                          {togglingId === site.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <RefreshCw className="h-3 w-3" />
+                          }
+                          {site.reusable ? "Yes" : "No"}
+                        </button>
+                      ) : (
+                        <span className={cn(
+                          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border",
+                          site.reusable
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-muted text-muted-foreground border-border"
+                        )}>
+                          <RefreshCw className="h-3 w-3" />
+                          {site.reusable ? "Yes" : "No"}
+                        </span>
                       )}
                     </td>
                     {isSuperAdmin && (
@@ -201,6 +254,7 @@ interface ParsedRow {
   url:       string;
   da:        string;
   spamScore: string;
+  reusable:  boolean;
   valid:     boolean;
 }
 
@@ -216,7 +270,7 @@ function parseTSV(text: string): ParsedRow[] {
       const url   = cols[0]?.trim() ?? "";
       const da    = cols[1]?.trim().replace(/[^0-9.]/g, "") ?? "";
       const spam  = cols[2]?.trim().replace(/[^0-9.]/g, "") ?? "";
-      return { url, da, spamScore: spam, valid: url.length > 0 };
+      return { url, da, spamScore: spam, reusable: false, valid: url.length > 0 };
     })
     .filter((r) => r.url);
 }
@@ -246,7 +300,7 @@ function AddSiteForm({ onSaved, onCancel }: {
     setRows((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  function updateCell(i: number, field: keyof ParsedRow, value: string) {
+  function updateCell(i: number, field: keyof ParsedRow, value: string | boolean) {
     setRows((prev) =>
       prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r)
     );
@@ -269,7 +323,7 @@ function AddSiteForm({ onSaved, onCancel }: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sites: valid.map((r) => ({ url: r.url.trim(), da: r.da, spamScore: r.spamScore })),
+        sites: valid.map((r) => ({ url: r.url.trim(), da: r.da, spamScore: r.spamScore, reusable: r.reusable })),
       }),
     });
 
@@ -339,6 +393,7 @@ function AddSiteForm({ onSaved, onCancel }: {
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">URL</th>
                     <th className="text-center px-3 py-2 font-medium text-muted-foreground w-16">DA</th>
                     <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Spam %</th>
+                    <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Reusable</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -370,6 +425,15 @@ function AddSiteForm({ onSaved, onCancel }: {
                           onChange={(e) => updateCell(i, "spamScore", e.target.value)}
                           placeholder="—"
                           className="w-14 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={row.reusable}
+                          onChange={(e) => updateCell(i, "reusable", e.target.checked)}
+                          className="h-3.5 w-3.5 rounded cursor-pointer"
+                          title="Mark as reusable"
                         />
                       </td>
                       <td className="px-2 py-1.5">

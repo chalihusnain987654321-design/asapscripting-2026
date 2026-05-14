@@ -20,6 +20,7 @@ export async function GET() {
       spamScore:   s.spamScore ?? null,
       niche:       s.niche ?? "",
       notes:       s.notes ?? "",
+      reusable:    (s as unknown as Record<string, unknown>).reusable as boolean ?? false,
       addedBy:     s.addedBy,
       addedByName: s.addedByName,
       createdAt:   s.createdAt.toISOString(),
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
   const body = await req.json();
   // Accept per-row sites array: [{ url, da?, spamScore? }] + shared niche/notes
   const { sites, niche, notes } = body as {
-    sites: Array<{ url: string; da?: string | number; spamScore?: string | number }>;
+    sites: Array<{ url: string; da?: string | number; spamScore?: string | number; reusable?: boolean }>;
     niche?: string;
     notes?: string;
   };
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
       spamScore: s.spamScore != null && s.spamScore !== "" ? Number(s.spamScore) : null,
       niche:     nicheVal,
       notes:     notesVal,
+      reusable:  !!s.reusable,
       addedBy,
       addedByName,
     }))
@@ -82,6 +84,7 @@ export async function POST(req: Request) {
       spamScore:   s.spamScore ?? null,
       niche:       s.niche ?? "",
       notes:       s.notes ?? "",
+      reusable:    (s as unknown as Record<string, unknown>).reusable as boolean ?? false,
       addedBy:     s.addedBy,
       addedByName: s.addedByName,
       createdAt:   s.createdAt.toISOString(),
