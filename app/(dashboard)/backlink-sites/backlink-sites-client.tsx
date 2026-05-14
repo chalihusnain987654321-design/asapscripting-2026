@@ -34,6 +34,7 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
   useEffect(() => { setSites(initial); }, [initial]);
   const [addOpen,         setAddOpen]         = useState(false);
   const [addReusableOpen, setAddReusableOpen] = useState(false);
+  const [showReusableOnly, setShowReusableOnly] = useState(false);
   const [deleteId,   setDeleteId]   = useState<string | null>(null);
   const [deleting,   setDeleting]   = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -98,11 +99,42 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
         </div>
       </div>
 
+      {/* Filter bar */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setShowReusableOnly((v) => !v)}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+            showReusableOnly
+              ? "bg-blue-50 text-blue-700 border-blue-300"
+              : "bg-background text-muted-foreground border-input hover:bg-muted/50"
+          )}
+        >
+          <Repeat2 className="h-3.5 w-3.5" />
+          Reusable Only
+          {showReusableOnly && (
+            <span className="ml-1 text-xs bg-blue-100 text-blue-700 rounded-full px-1.5 py-0.5">
+              {sites.filter((s) => s.reusable).length}
+            </span>
+          )}
+        </button>
+        {showReusableOnly && (
+          <span className="text-xs text-muted-foreground">
+            Showing {sites.filter((s) => s.reusable).length} of {sites.length} sites
+          </span>
+        )}
+      </div>
+
       {/* Table */}
-      {sites.length === 0 ? (
+      {(() => {
+        const filtered = showReusableOnly ? sites.filter((s) => s.reusable) : sites;
+        return filtered.length === 0 ? (
         <div className="rounded-lg border bg-card p-12 text-center">
           <Link2 className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">No approved sites yet. Add the first one.</p>
+          <p className="text-sm text-muted-foreground">
+            {showReusableOnly ? "No reusable sites found." : "No approved sites yet. Add the first one."}
+          </p>
         </div>
       ) : (
         <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
@@ -121,7 +153,7 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {sites.map((site) => (
+                {filtered.map((site) => (
                   <tr key={site.id} className="hover:bg-muted/20 transition-colors group">
                     <td className="px-4 py-3 max-w-[280px]">
                       <a
@@ -213,7 +245,7 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
             </table>
           </div>
         </div>
-      )}
+      );})()}
 
       {/* Add sites sheet */}
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
