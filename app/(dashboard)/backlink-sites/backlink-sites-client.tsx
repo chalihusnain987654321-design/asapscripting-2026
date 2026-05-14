@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check, RefreshCw, Repeat2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check, Repeat2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -30,34 +31,16 @@ interface Props {
 
 export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId }: Props) {
   const router = useRouter();
-  const [sites, setSites] = useState(initial);
-  useEffect(() => { setSites(initial); }, [initial]);
+  const [sites,           setSites]           = useState(initial);
   const [addOpen,         setAddOpen]         = useState(false);
-  const [addReusableOpen, setAddReusableOpen] = useState(false);
-  const [showReusableOnly, setShowReusableOnly] = useState(false);
-  const [deleteId,   setDeleteId]   = useState<string | null>(null);
-  const [deleting,   setDeleting]   = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [reusableOpen,    setReusableOpen]    = useState(false);
+  const [deleteId,        setDeleteId]        = useState<string | null>(null);
+  const [deleting,        setDeleting]        = useState(false);
+  const [removingId,      setRemovingId]      = useState<string | null>(null);
+
+  useEffect(() => { setSites(initial); }, [initial]);
 
   const isSuperAdmin = viewerRole === "super-admin";
-  const canManage    = isSuperAdmin || viewerRole === "sub-lead";
-
-  async function toggleReusable(site: BacklinkSiteRow) {
-    if (togglingId) return;
-    setTogglingId(site.id);
-    const res = await fetch(`/api/backlink-sites/${site.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reusable: !site.reusable }),
-    });
-    setTogglingId(null);
-    if (res.ok) {
-      const updated = await res.json();
-      setSites((prev) => prev.map((s) => s.id === site.id ? { ...s, reusable: updated.reusable } : s));
-    } else {
-      alert("Failed to update.");
-    }
-  }
 
   function canDelete(site: BacklinkSiteRow) {
     return isSuperAdmin || site.addedBy === currentUserId;
@@ -77,6 +60,21 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
     }
   }
 
+  async function removeFromReusable(site: BacklinkSiteRow) {
+    setRemovingId(site.id);
+    const res = await fetch(`/api/backlink-sites/${site.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reusable: false }),
+    });
+    setRemovingId(null);
+    if (res.ok) {
+      setSites((prev) => prev.map((s) => s.id === site.id ? { ...s, reusable: false } : s));
+    } else {
+      alert("Failed to update.");
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -88,9 +86,9 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setAddReusableOpen(true)}>
+          <Button variant="outline" onClick={() => setReusableOpen(true)}>
             <Repeat2 className="h-4 w-4" />
-            Add Reusable Sites
+            Reusable Sites
           </Button>
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -99,42 +97,11 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setShowReusableOnly((v) => !v)}
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
-            showReusableOnly
-              ? "bg-blue-50 text-blue-700 border-blue-300"
-              : "bg-background text-muted-foreground border-input hover:bg-muted/50"
-          )}
-        >
-          <Repeat2 className="h-3.5 w-3.5" />
-          Reusable Only
-          {showReusableOnly && (
-            <span className="ml-1 text-xs bg-blue-100 text-blue-700 rounded-full px-1.5 py-0.5">
-              {sites.filter((s) => s.reusable).length}
-            </span>
-          )}
-        </button>
-        {showReusableOnly && (
-          <span className="text-xs text-muted-foreground">
-            Showing {sites.filter((s) => s.reusable).length} of {sites.length} sites
-          </span>
-        )}
-      </div>
-
       {/* Table */}
-      {(() => {
-        const filtered = showReusableOnly ? sites.filter((s) => s.reusable) : sites;
-        return filtered.length === 0 ? (
+      {sites.length === 0 ? (
         <div className="rounded-lg border bg-card p-12 text-center">
           <Link2 className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">
-            {showReusableOnly ? "No reusable sites found." : "No approved sites yet. Add the first one."}
-          </p>
+          <p className="text-sm text-muted-foreground">No approved sites yet. Add the first one.</p>
         </div>
       ) : (
         <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
@@ -145,7 +112,6 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">URL</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">DA</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Spam Score</th>
-                  <th className="text-center px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Reusable</th>
                   {isSuperAdmin && (
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Added By</th>
                   )}
@@ -153,18 +119,25 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map((site) => (
+                {sites.map((site) => (
                   <tr key={site.id} className="hover:bg-muted/20 transition-colors group">
                     <td className="px-4 py-3 max-w-[280px]">
-                      <a
-                        href={site.url.startsWith("http") ? site.url : `https://${site.url}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-blue-600 hover:underline text-xs font-medium"
-                      >
-                        <span className="truncate">{site.url}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={site.url.startsWith("http") ? site.url : `https://${site.url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-blue-600 hover:underline text-xs font-medium"
+                        >
+                          <span className="truncate">{site.url}</span>
+                          <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                        {site.reusable && (
+                          <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200">
+                            <Repeat2 className="h-2.5 w-2.5" />Reusable
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {site.da != null ? (
@@ -182,38 +155,6 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
                         </span>
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {canManage ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleReusable(site)}
-                          disabled={togglingId === site.id}
-                          title={site.reusable ? "Click to make one-time" : "Click to make reusable"}
-                          className={cn(
-                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors",
-                            site.reusable
-                              ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                              : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
-                          )}
-                        >
-                          {togglingId === site.id
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <RefreshCw className="h-3 w-3" />
-                          }
-                          {site.reusable ? "Yes" : "No"}
-                        </button>
-                      ) : (
-                        <span className={cn(
-                          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border",
-                          site.reusable
-                            ? "bg-blue-50 text-blue-700 border-blue-200"
-                            : "bg-muted text-muted-foreground border-border"
-                        )}>
-                          <RefreshCw className="h-3 w-3" />
-                          {site.reusable ? "Yes" : "No"}
-                        </span>
                       )}
                     </td>
                     {isSuperAdmin && (
@@ -245,7 +186,7 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
             </table>
           </div>
         </div>
-      );})()}
+      )}
 
       {/* Add sites sheet */}
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
@@ -258,7 +199,6 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
             <AddSiteForm
-              defaultReusable={false}
               onSaved={(newSites) => {
                 setSites((prev) => [...newSites, ...prev]);
                 setAddOpen(false);
@@ -270,33 +210,23 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
         </SheetContent>
       </Sheet>
 
-      {/* Add reusable sites sheet */}
-      <Sheet open={addReusableOpen} onOpenChange={setAddReusableOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col gap-0 p-0">
-          <SheetHeader className="px-6 py-4 border-b shrink-0">
-            <div className="flex items-center gap-2">
-              <SheetTitle>Import Reusable Sites</SheetTitle>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                <Repeat2 className="h-3 w-3" />Reusable
-              </span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              These sites will be marked <span className="font-medium text-blue-700">reusable</span> — they stay visible in the dropdown even after a backlink has been created on them.
-            </p>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto">
-            <AddSiteForm
-              defaultReusable={true}
-              onSaved={(newSites) => {
-                setSites((prev) => [...newSites, ...prev]);
-                setAddReusableOpen(false);
-                router.refresh();
-              }}
-              onCancel={() => setAddReusableOpen(false)}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
+      {/* Reusable sites dialog */}
+      <Dialog open={reusableOpen} onOpenChange={setReusableOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Repeat2 className="h-4 w-4 text-blue-600" />
+              Reusable Sites
+            </DialogTitle>
+          </DialogHeader>
+          <ReusableSitesPanel
+            sites={sites}
+            removingId={removingId}
+            onRemove={removeFromReusable}
+            onAdded={(newSite) => setSites((prev) => [newSite, ...prev])}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirm */}
       <Dialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
@@ -317,13 +247,107 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
   );
 }
 
+// ─── Reusable Sites Panel ─────────────────────────────────────────────────────
+
+function ReusableSitesPanel({ sites, removingId, onRemove, onAdded }: {
+  sites: BacklinkSiteRow[];
+  removingId: string | null;
+  onRemove: (site: BacklinkSiteRow) => void;
+  onAdded: (site: BacklinkSiteRow) => void;
+}) {
+  const reusable = sites.filter((s) => s.reusable);
+  const [url,     setUrl]     = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setError(""); setLoading(true);
+    const res = await fetch("/api/backlink-sites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sites: [{ url: trimmed, reusable: true }] }),
+    });
+    setLoading(false);
+    if (!res.ok) { setError((await res.json()).error ?? "Something went wrong."); return; }
+    const created: BacklinkSiteRow[] = await res.json();
+    if (created[0]) { onAdded(created[0]); setUrl(""); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        These sites stay visible in the dropdown even after a backlink has already been built on them.
+      </p>
+
+      {/* Add form */}
+      <form onSubmit={handleAdd} className="flex gap-2">
+        <Input
+          placeholder="e.g. example.com"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          className="flex-1"
+        />
+        <Button type="submit" disabled={loading || !url.trim()}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          Add
+        </Button>
+      </form>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {/* List */}
+      {reusable.length === 0 ? (
+        <div className="rounded-lg border bg-muted/20 py-10 text-center">
+          <Repeat2 className="h-7 w-7 text-muted-foreground/30 mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">No reusable sites yet.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Add a site URL above to get started.</p>
+        </div>
+      ) : (
+        <div className="rounded-lg border overflow-hidden max-h-72 overflow-y-auto">
+          <div className="divide-y">
+            {reusable.map((site) => (
+              <div key={site.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 group">
+                <a
+                  href={site.url.startsWith("http") ? site.url : `https://${site.url}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center gap-1 text-sm text-blue-600 hover:underline min-w-0"
+                >
+                  <span className="truncate">{site.url}</span>
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+                {site.da != null && (
+                  <span className="text-xs text-muted-foreground shrink-0">DA {site.da}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onRemove(site)}
+                  disabled={removingId === site.id}
+                  title="Remove from reusable"
+                  className="shrink-0 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  {removingId === site.id
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <X className="h-3.5 w-3.5" />
+                  }
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ParsedRow {
   url:       string;
   da:        string;
   spamScore: string;
-  reusable:  boolean;
   valid:     boolean;
 }
 
@@ -339,29 +363,27 @@ function parseTSV(text: string): ParsedRow[] {
       const url   = cols[0]?.trim() ?? "";
       const da    = cols[1]?.trim().replace(/[^0-9.]/g, "") ?? "";
       const spam  = cols[2]?.trim().replace(/[^0-9.]/g, "") ?? "";
-      return { url, da, spamScore: spam, reusable: false, valid: url.length > 0 };
+      return { url, da, spamScore: spam, valid: url.length > 0 };
     })
     .filter((r) => r.url);
 }
 
-// ─── Add Site Form ────────────────────────────────────────────────────────────
+// ─── Add Site Form (bulk TSV import) ─────────────────────────────────────────
 
-function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
-  defaultReusable: boolean;
+function AddSiteForm({ onSaved, onCancel }: {
   onSaved: (sites: BacklinkSiteRow[]) => void;
   onCancel: () => void;
 }) {
-  const [rows,    setRows]    = useState<ParsedRow[]>([]);
+  const [rows,   setRows]   = useState<ParsedRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error,    setError]    = useState("");
-  const [pasted,   setPasted]   = useState(false);
-  const pasteRef   = useRef<HTMLTextAreaElement>(null);
+  const [error,   setError]   = useState("");
+  const [pasted,  setPasted]  = useState(false);
+  const pasteRef = useRef<HTMLTextAreaElement>(null);
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     e.preventDefault();
     const text = e.clipboardData.getData("text");
-    const parsed = parseTSV(text).map((r) => ({ ...r, reusable: defaultReusable }));
-    setRows(parsed);
+    setRows(parseTSV(text));
     setPasted(true);
     setError("");
   }
@@ -370,16 +392,12 @@ function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
     setRows((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  function updateCell(i: number, field: keyof ParsedRow, value: string | boolean) {
-    setRows((prev) =>
-      prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r)
-    );
+  function updateCell(i: number, field: keyof ParsedRow, value: string) {
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
   }
 
   function reset() {
-    setRows([]);
-    setPasted(false);
-    setError("");
+    setRows([]); setPasted(false); setError("");
     setTimeout(() => pasteRef.current?.focus(), 50);
   }
 
@@ -393,7 +411,7 @@ function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sites: valid.map((r) => ({ url: r.url.trim(), da: r.da, spamScore: r.spamScore, reusable: r.reusable })),
+        sites: valid.map((r) => ({ url: r.url.trim(), da: r.da, spamScore: r.spamScore })),
       }),
     });
 
@@ -404,8 +422,6 @@ function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
 
   return (
     <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-
-      {/* Step 1 — paste zone */}
       {!pasted ? (
         <div className="space-y-2">
           <Label>Paste from Google Sheets</Label>
@@ -438,22 +454,16 @@ function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
           </div>
         </div>
       ) : (
-        /* Step 2 — preview table */
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <Label>{rows.length} site{rows.length !== 1 ? "s" : ""} ready to import</Label>
               <p className="text-xs text-muted-foreground mt-0.5">Review and edit if needed. Click × to remove a row.</p>
             </div>
-            <button
-              type="button"
-              onClick={reset}
-              className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-            >
+            <button type="button" onClick={reset} className="text-xs text-muted-foreground hover:text-foreground underline transition-colors">
               Paste again
             </button>
           </div>
-
           <div className="rounded-lg border overflow-hidden">
             <div className="max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
@@ -463,9 +473,6 @@ function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">URL</th>
                     <th className="text-center px-3 py-2 font-medium text-muted-foreground w-16">DA</th>
                     <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Spam %</th>
-                    {!defaultReusable && (
-                      <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Reusable</th>
-                    )}
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -474,48 +481,20 @@ function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
                     <tr key={i} className={cn("group", !row.url.trim() && "bg-red-50 dark:bg-red-950/20")}>
                       <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
                       <td className="px-3 py-1.5">
-                        <input
-                          type="text"
-                          value={row.url}
-                          onChange={(e) => updateCell(i, "url", e.target.value)}
-                          className="w-full bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 -mx-1 text-xs"
-                        />
+                        <input type="text" value={row.url} onChange={(e) => updateCell(i, "url", e.target.value)}
+                          className="w-full bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 -mx-1 text-xs" />
                       </td>
                       <td className="px-3 py-1.5 text-center">
-                        <input
-                          type="text"
-                          value={row.da}
-                          onChange={(e) => updateCell(i, "da", e.target.value)}
-                          placeholder="—"
-                          className="w-12 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs"
-                        />
+                        <input type="text" value={row.da} onChange={(e) => updateCell(i, "da", e.target.value)}
+                          placeholder="—" className="w-12 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs" />
                       </td>
                       <td className="px-3 py-1.5 text-center">
-                        <input
-                          type="text"
-                          value={row.spamScore}
-                          onChange={(e) => updateCell(i, "spamScore", e.target.value)}
-                          placeholder="—"
-                          className="w-14 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs"
-                        />
+                        <input type="text" value={row.spamScore} onChange={(e) => updateCell(i, "spamScore", e.target.value)}
+                          placeholder="—" className="w-14 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs" />
                       </td>
-                      {!defaultReusable && (
-                        <td className="px-3 py-1.5 text-center">
-                          <input
-                            type="checkbox"
-                            checked={row.reusable}
-                            onChange={(e) => updateCell(i, "reusable", e.target.checked)}
-                            className="h-3.5 w-3.5 rounded cursor-pointer"
-                            title="Mark as reusable"
-                          />
-                        </td>
-                      )}
                       <td className="px-2 py-1.5">
-                        <button
-                          type="button"
-                          onClick={() => removeRow(i)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                        >
+                        <button type="button" onClick={() => removeRow(i)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </td>
@@ -531,15 +510,10 @@ function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex gap-2 justify-end pt-1">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
-          Cancel
-        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Cancel</Button>
         {pasted && rows.length > 0 && (
           <Button type="submit" disabled={loading || rows.filter((r) => r.url.trim()).length === 0}>
-            {loading
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Check className="h-4 w-4" />
-            }
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             Import {rows.filter((r) => r.url.trim()).length} Site{rows.filter((r) => r.url.trim()).length !== 1 ? "s" : ""}
           </Button>
         )}
