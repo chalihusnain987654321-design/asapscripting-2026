@@ -13,13 +13,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const body = await req.json();
+  const reusableVal = !!body.reusable;
   await connectDB();
 
-  const site = await BacklinkSite.findByIdAndUpdate(
-    params.id,
-    { reusable: !!body.reusable },
-    { new: true }
+  // Use raw MongoDB $set to bypass Mongoose schema caching issues
+  await BacklinkSite.collection.updateOne(
+    { _id: new (await import("mongoose")).default.Types.ObjectId(params.id) },
+    { $set: { reusable: reusableVal } }
   );
+
+  const site = await BacklinkSite.findById(params.id).lean();
   if (!site) return Response.json({ error: "Not found." }, { status: 404 });
 
   return Response.json({
@@ -29,7 +32,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     spamScore:   site.spamScore ?? null,
     niche:       site.niche ?? "",
     notes:       site.notes ?? "",
-    reusable:    site.reusable ?? false,
+    reusable:    reusableVal,
     addedBy:     site.addedBy,
     addedByName: site.addedByName,
     createdAt:   site.createdAt.toISOString(),

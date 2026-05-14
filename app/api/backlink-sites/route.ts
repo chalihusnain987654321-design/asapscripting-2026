@@ -76,6 +76,18 @@ export async function POST(req: Request) {
     }))
   );
 
+  // Force-write reusable flag via raw MongoDB to bypass any Mongoose schema caching issues
+  const reusableIds = created
+    .map((d, i) => ({ id: d._id, reusable: !!cleanSites[i].reusable }))
+    .filter((x) => x.reusable)
+    .map((x) => x.id);
+  if (reusableIds.length > 0) {
+    await BacklinkSite.collection.updateMany(
+      { _id: { $in: reusableIds } },
+      { $set: { reusable: true } }
+    );
+  }
+
   return Response.json(
     created.map((s, i) => ({
       id:          s._id.toString(),
