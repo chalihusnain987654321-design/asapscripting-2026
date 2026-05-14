@@ -632,7 +632,7 @@ function BulkReportForm({ assignedWebsites, onSaved, onCancel }: {
                         placeholder="0"
                         value={d[field]}
                         onChange={(e) => setField(w.id, field, e.target.value)}
-                        className="h-8 w-24 text-center tabular-nums"
+                        className="h-8 w-24 text-center tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
                     </td>
                   ))}
@@ -714,6 +714,7 @@ function EditForm({ existing, onSaved, onCancel }: {
               placeholder="0"
               value={value}
               onChange={(e) => (set as (v: string) => void)(e.target.value)}
+              className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
         ))}
