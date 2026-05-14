@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check, RefreshCw, Repeat2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -31,7 +31,8 @@ interface Props {
 export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId }: Props) {
   const router = useRouter();
   const [sites,    setSites]    = useState(initial);
-  const [addOpen,    setAddOpen]    = useState(false);
+  const [addOpen,         setAddOpen]         = useState(false);
+  const [addReusableOpen, setAddReusableOpen] = useState(false);
   const [deleteId,   setDeleteId]   = useState<string | null>(null);
   const [deleting,   setDeleting]   = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -84,10 +85,16 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
             Approved source sites for team members to build backlinks on
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add Sites
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setAddReusableOpen(true)}>
+            <Repeat2 className="h-4 w-4" />
+            Add Reusable Sites
+          </Button>
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add Sites
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -207,7 +214,7 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
         </div>
       )}
 
-      {/* Add sheet */}
+      {/* Add sites sheet */}
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
         <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col gap-0 p-0">
           <SheetHeader className="px-6 py-4 border-b shrink-0">
@@ -218,12 +225,41 @@ export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId 
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
             <AddSiteForm
+              defaultReusable={false}
               onSaved={(newSites) => {
                 setSites((prev) => [...newSites, ...prev]);
                 setAddOpen(false);
                 router.refresh();
               }}
               onCancel={() => setAddOpen(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Add reusable sites sheet */}
+      <Sheet open={addReusableOpen} onOpenChange={setAddReusableOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col gap-0 p-0">
+          <SheetHeader className="px-6 py-4 border-b shrink-0">
+            <div className="flex items-center gap-2">
+              <SheetTitle>Import Reusable Sites</SheetTitle>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                <Repeat2 className="h-3 w-3" />Reusable
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              These sites will be marked <span className="font-medium text-blue-700">reusable</span> — they stay visible in the dropdown even after a backlink has been created on them.
+            </p>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto">
+            <AddSiteForm
+              defaultReusable={true}
+              onSaved={(newSites) => {
+                setSites((prev) => [...newSites, ...prev]);
+                setAddReusableOpen(false);
+                router.refresh();
+              }}
+              onCancel={() => setAddReusableOpen(false)}
             />
           </div>
         </SheetContent>
@@ -277,7 +313,8 @@ function parseTSV(text: string): ParsedRow[] {
 
 // ─── Add Site Form ────────────────────────────────────────────────────────────
 
-function AddSiteForm({ onSaved, onCancel }: {
+function AddSiteForm({ defaultReusable, onSaved, onCancel }: {
+  defaultReusable: boolean;
   onSaved: (sites: BacklinkSiteRow[]) => void;
   onCancel: () => void;
 }) {
@@ -290,7 +327,7 @@ function AddSiteForm({ onSaved, onCancel }: {
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     e.preventDefault();
     const text = e.clipboardData.getData("text");
-    const parsed = parseTSV(text);
+    const parsed = parseTSV(text).map((r) => ({ ...r, reusable: defaultReusable }));
     setRows(parsed);
     setPasted(true);
     setError("");
@@ -393,7 +430,9 @@ function AddSiteForm({ onSaved, onCancel }: {
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">URL</th>
                     <th className="text-center px-3 py-2 font-medium text-muted-foreground w-16">DA</th>
                     <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Spam %</th>
-                    <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Reusable</th>
+                    {!defaultReusable && (
+                      <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">Reusable</th>
+                    )}
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -427,15 +466,17 @@ function AddSiteForm({ onSaved, onCancel }: {
                           className="w-14 text-center bg-transparent focus:outline-none focus:bg-background focus:ring-1 focus:ring-ring rounded px-1 text-xs"
                         />
                       </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={row.reusable}
-                          onChange={(e) => updateCell(i, "reusable", e.target.checked)}
-                          className="h-3.5 w-3.5 rounded cursor-pointer"
-                          title="Mark as reusable"
-                        />
-                      </td>
+                      {!defaultReusable && (
+                        <td className="px-3 py-1.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={row.reusable}
+                            onChange={(e) => updateCell(i, "reusable", e.target.checked)}
+                            className="h-3.5 w-3.5 rounded cursor-pointer"
+                            title="Mark as reusable"
+                          />
+                        </td>
+                      )}
                       <td className="px-2 py-1.5">
                         <button
                           type="button"
