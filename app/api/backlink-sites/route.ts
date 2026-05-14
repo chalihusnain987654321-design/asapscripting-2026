@@ -20,7 +20,7 @@ export async function GET() {
       spamScore:   s.spamScore ?? null,
       niche:       s.niche ?? "",
       notes:       s.notes ?? "",
-      reusable:    (s as unknown as Record<string, unknown>).reusable as boolean ?? false,
+      reusable:    !!(s as unknown as Record<string, unknown>).reusable,
       addedBy:     s.addedBy,
       addedByName: s.addedByName,
       createdAt:   s.createdAt.toISOString(),
@@ -77,14 +77,14 @@ export async function POST(req: Request) {
   );
 
   return Response.json(
-    created.map((s) => ({
+    created.map((s, i) => ({
       id:          s._id.toString(),
       url:         s.url,
       da:          s.da ?? null,
       spamScore:   s.spamScore ?? null,
       niche:       s.niche ?? "",
       notes:       s.notes ?? "",
-      reusable:    (s as unknown as Record<string, unknown>).reusable as boolean ?? false,
+      reusable:    !!cleanSites[i].reusable,
       addedBy:     s.addedBy,
       addedByName: s.addedByName,
       createdAt:   s.createdAt.toISOString(),

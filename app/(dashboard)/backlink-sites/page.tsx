@@ -27,7 +27,7 @@ export default async function BacklinkSitesPage() {
     spamScore:   s.spamScore ?? null,
     niche:       s.niche ?? "",
     notes:       s.notes ?? "",
-    reusable:    (s as unknown as Record<string, unknown>).reusable as boolean ?? false,
+    reusable:    !!(s as unknown as Record<string, unknown>).reusable,
     addedBy:     s.addedBy,
     addedByName: s.addedByName,
     createdAt:   s.createdAt.toISOString(),

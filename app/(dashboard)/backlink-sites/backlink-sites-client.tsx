@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Loader2, Link2, ExternalLink, ClipboardPaste, X, Check, RefreshCw, Repeat2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,8 @@ interface Props {
 
 export function BacklinkSitesClient({ sites: initial, viewerRole, currentUserId }: Props) {
   const router = useRouter();
-  const [sites,    setSites]    = useState(initial);
+  const [sites, setSites] = useState(initial);
+  useEffect(() => { setSites(initial); }, [initial]);
   const [addOpen,         setAddOpen]         = useState(false);
   const [addReusableOpen, setAddReusableOpen] = useState(false);
   const [deleteId,   setDeleteId]   = useState<string | null>(null);
