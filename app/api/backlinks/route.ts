@@ -113,15 +113,19 @@ export async function POST(req: Request) {
   }
 
   // Unique check: block if an active (pending/approved) backlink already exists for this pair
-  const duplicate = await Backlink.findOne({
-    sourceSiteId,
-    targetWebsiteId: targetWebsiteId ?? "",
-    approvalStatus: { $in: ["pending", "approved"] },
-  });
-  if (duplicate) {
-    return Response.json({
-      error: `A backlink from "${sourceSite.url}" to "${websiteName}" is already pending or approved.`,
-    }, { status: 409 });
+  // Skip check for reusable sites — they allow multiple backlinks across websites
+  const isReusable = !!(sourceSite as unknown as Record<string, unknown>).reusable;
+  if (!isReusable) {
+    const duplicate = await Backlink.findOne({
+      sourceSiteId,
+      targetWebsiteId: targetWebsiteId ?? "",
+      approvalStatus: { $in: ["pending", "approved"] },
+    });
+    if (duplicate) {
+      return Response.json({
+        error: `A backlink from "${sourceSite.url}" to "${websiteName}" is already pending or approved.`,
+      }, { status: 409 });
+    }
   }
 
   const created = await Backlink.create({
