@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { connectDB, DailyReport } from "@/lib/mongodb";
+import { connectDB, DailyReport, User } from "@/lib/mongodb";
 
 export const dynamic = "force-dynamic";
 
@@ -53,13 +53,16 @@ export async function GET() {
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = toDateStr(yesterday);
 
-  // Check from April 22, 2026 onwards
-  const startStr = "2026-04-22";
+  await connectDB();
+
+  // Start from whichever is later: April 22 2026 (global cutoff) or user's account creation date
+  const GLOBAL_CUTOFF = "2026-04-22";
+  const userDoc = await User.findById(session.user.id).select("createdAt").lean();
+  const userCreatedStr = userDoc?.createdAt ? toDateStr(userDoc.createdAt) : GLOBAL_CUTOFF;
+  const startStr = userCreatedStr > GLOBAL_CUTOFF ? userCreatedStr : GLOBAL_CUTOFF;
 
   const workingDays = workingDaysBetween(startStr, yesterdayStr);
   if (workingDays.length === 0) return Response.json({ missedDate: null });
-
-  await connectDB();
 
   // Fetch all reports for this user in the range
   const rangeStart = new Date(workingDays[0] + "T00:00:00.000Z");
