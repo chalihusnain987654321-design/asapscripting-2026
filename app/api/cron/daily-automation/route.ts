@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 import { writeFile, readFile, unlink } from "fs/promises";
-import { join, resolve } from "path";
+import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { connectDB, Website, IndexingQueue, ExecutionLog, Settings } from "@/lib/mongodb";
