@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Loader2, Users, Globe, ExternalLink, UserPlus } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Users, Globe, ExternalLink, UserPlus, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,11 @@ export interface WebsiteRow {
   url: string;
   assignedTo: { userId: string; userName: string }[];
   createdAt: string;
+  automationEnabled:     boolean;
+  gscServiceAccountName: string;
+  bingApiKey:            string;
+  robotsTxtUrl:          string;
+  sitemapCount:          number;
 }
 
 export interface MemberOption {
@@ -25,25 +30,27 @@ export interface MemberOption {
 }
 
 interface Props {
-  websites: WebsiteRow[];
-  members: MemberOption[];
-  viewerRole: string;
-  currentUserId: string;
+  websites:            WebsiteRow[];
+  members:             MemberOption[];
+  viewerRole:          string;
+  currentUserId:       string;
+  serviceAccountNames: string[];
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export function WebsitesClient({ websites: initial, members, viewerRole }: Props) {
+export function WebsitesClient({ websites: initial, members, viewerRole, serviceAccountNames }: Props) {
   const router = useRouter();
-  const [websites, setWebsites] = useState(initial);
-  const [addOpen,    setAddOpen]    = useState(false);
-  const [editItem,   setEditItem]   = useState<WebsiteRow | null>(null);
-  const [deleteId,   setDeleteId]   = useState<string | null>(null);
-  const [deleting,   setDeleting]   = useState(false);
-  const [assignItem, setAssignItem] = useState<WebsiteRow | null>(null);
+  const [websites, setWebsites]       = useState(initial);
+  const [addOpen,    setAddOpen]       = useState(false);
+  const [editItem,   setEditItem]      = useState<WebsiteRow | null>(null);
+  const [deleteId,   setDeleteId]      = useState<string | null>(null);
+  const [deleting,   setDeleting]      = useState(false);
+  const [assignItem, setAssignItem]    = useState<WebsiteRow | null>(null);
+  const [autoItem,   setAutoItem]      = useState<WebsiteRow | null>(null);
 
-  const isSuperAdmin  = viewerRole === "super-admin";
-  const canFilter     = viewerRole === "super-admin" || viewerRole === "sub-lead";
+  const isSuperAdmin = viewerRole === "super-admin";
+  const canFilter    = viewerRole === "super-admin" || viewerRole === "sub-lead";
   const [filterMember, setFilterMember] = useState("");
 
   const filtered = filterMember
@@ -65,6 +72,14 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
   function onAssigned(w: WebsiteRow) {
     setWebsites((prev) => prev.map((x) => (x.id === w.id ? w : x)));
     setAssignItem(null);
+    router.refresh();
+  }
+
+  function onAutomationSaved(updated: Partial<WebsiteRow> & { id: string }) {
+    setWebsites((prev) =>
+      prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x))
+    );
+    setAutoItem(null);
     router.refresh();
   }
 
@@ -143,13 +158,23 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Website</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">URL</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Assigned Members</th>
-                {isSuperAdmin && <th className="px-4 py-3 w-28" />}
+                {isSuperAdmin && <th className="px-4 py-3 w-36" />}
               </tr>
             </thead>
             <tbody className="divide-y">
               {filtered.map((w) => (
                 <tr key={w.id} className="hover:bg-muted/20 transition-colors group">
-                  <td className="px-4 py-3 font-medium">{w.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <div className="flex items-center gap-2">
+                      {w.name}
+                      {w.automationEnabled && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600 border border-violet-200">
+                          <Zap className="h-3 w-3" />
+                          Auto
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {w.url ? (
                       <a href={w.url} target="_blank" rel="noopener noreferrer"
@@ -178,6 +203,11 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
                   {isSuperAdmin && (
                     <td className="px-4 py-3">
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                          onClick={() => setAutoItem(w)}>
+                          <Zap className="h-3.5 w-3.5" />
+                          Automation
+                        </Button>
                         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1"
                           onClick={() => setAssignItem(w)}>
                           <UserPlus className="h-3.5 w-3.5" />
@@ -234,6 +264,26 @@ export function WebsitesClient({ websites: initial, members, viewerRole }: Props
               members={members}
               onSaved={onAssigned}
               onCancel={() => setAssignItem(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Automation dialog */}
+      <Dialog open={!!autoItem} onOpenChange={(o) => { if (!o) setAutoItem(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-violet-600" />
+              Automation Settings — {autoItem?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {autoItem && (
+            <AutomationForm
+              website={autoItem}
+              serviceAccountNames={serviceAccountNames}
+              onSaved={onAutomationSaved}
+              onCancel={() => setAutoItem(null)}
             />
           )}
         </DialogContent>
@@ -306,6 +356,158 @@ function WebsiteForm({ existing, onSaved, onCancel }: {
         </Button>
       </div>
     </form>
+  );
+}
+
+// ─── Automation Form ──────────────────────────────────────────────────────────
+
+function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
+  website:             WebsiteRow;
+  serviceAccountNames: string[];
+  onSaved:             (updated: Partial<WebsiteRow> & { id: string }) => void;
+  onCancel:            () => void;
+}) {
+  const [enabled,    setEnabled]    = useState(website.automationEnabled);
+  const [gscAccount, setGscAccount] = useState(website.gscServiceAccountName);
+  const [bingKey,    setBingKey]    = useState(website.bingApiKey);
+  const [robotsUrl,  setRobotsUrl]  = useState(
+    website.robotsTxtUrl || (website.url ? `${website.url}/robots.txt` : "")
+  );
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState("");
+
+  async function handleSave() {
+    if (enabled && !gscAccount) {
+      setError("Please select a GSC service account.");
+      return;
+    }
+    if (enabled && !robotsUrl.trim()) {
+      setError("robots.txt URL is required when automation is enabled.");
+      return;
+    }
+
+    setError(""); setLoading(true);
+
+    const res = await fetch(`/api/websites/${website.id}/automation`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        automationEnabled:     enabled,
+        gscServiceAccountName: gscAccount,
+        bingApiKey:            bingKey,
+        robotsTxtUrl:          robotsUrl.trim(),
+      }),
+    });
+
+    setLoading(false);
+    if (!res.ok) { setError((await res.json()).error ?? "Something went wrong."); return; }
+
+    onSaved({
+      id:                    website.id,
+      automationEnabled:     enabled,
+      gscServiceAccountName: gscAccount,
+      bingApiKey:            bingKey,
+      robotsTxtUrl:          robotsUrl.trim(),
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Enable toggle */}
+      <div className="flex items-center justify-between rounded-lg border p-3">
+        <div>
+          <p className="text-sm font-medium">Enable Automation</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Run sitemap scrape + URL indexing daily at 2:05 am
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEnabled((v) => !v)}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+            enabled ? "bg-violet-600" : "bg-muted"
+          )}
+        >
+          <span className={cn(
+            "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg transition-transform",
+            enabled ? "translate-x-5" : "translate-x-0"
+          )} />
+        </button>
+      </div>
+
+      {/* robots.txt URL */}
+      <div className="space-y-1.5">
+        <Label>
+          robots.txt URL
+          {enabled && <span className="text-destructive ml-1">*</span>}
+        </Label>
+        <Input
+          placeholder="https://example.com/robots.txt"
+          value={robotsUrl}
+          onChange={(e) => setRobotsUrl(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Used once to discover all sitemaps. Leave blank to use default ({"{website_url}/robots.txt"}).
+        </p>
+      </div>
+
+      {/* GSC Service Account */}
+      <div className="space-y-1.5">
+        <Label>
+          GSC Service Account
+          {enabled && <span className="text-destructive ml-1">*</span>}
+        </Label>
+        {serviceAccountNames.length === 0 ? (
+          <p className="text-xs text-muted-foreground rounded-lg border p-3 bg-muted/30">
+            No service accounts found. Add one in Settings first.
+          </p>
+        ) : (
+          <select
+            value={gscAccount}
+            onChange={(e) => setGscAccount(e.target.value)}
+            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">— Select service account —</option>
+            {serviceAccountNames.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Bing API Key */}
+      <div className="space-y-1.5">
+        <Label>
+          Bing IndexNow API Key
+          <span className="text-xs text-muted-foreground ml-1">(optional)</span>
+        </Label>
+        <Input
+          placeholder="Leave blank to use shared key"
+          value={bingKey}
+          onChange={(e) => setBingKey(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Only needed if this website uses its own IndexNow key.
+        </p>
+      </div>
+
+      {website.sitemapCount > 0 && (
+        <p className="text-xs text-muted-foreground rounded-lg border p-2.5 bg-muted/30">
+          {website.sitemapCount} sitemap(s) already discovered. New sitemaps will not be re-scraped unless you clear them.
+        </p>
+      )}
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="flex gap-2 justify-end pt-1">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Cancel</Button>
+        <Button onClick={handleSave} disabled={loading}>
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Save Settings
+        </Button>
+      </div>
+    </div>
   );
 }
 

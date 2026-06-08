@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   CheckCircle, XCircle, Loader2, Eye,
   ChevronLeft, ChevronRight, CalendarDays,
-  TrendingUp, Activity, AlertCircle, Users, ChevronDown,
+  TrendingUp, Activity, AlertCircle, Users, ChevronDown, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,9 @@ export interface LogRow {
   startedAt: string;
   durationMs: number | null;
   output: string;
+  isAutomated: boolean;
+  websiteId: string | null;
+  websiteName: string | null;
 }
 
 export interface UserTab {
@@ -56,6 +59,7 @@ interface LogsPageClientProps {
   pageSize: number;
   currentAdminId: string;
   viewerRole: string;
+  runType: "all" | "manual" | "automated";
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -129,6 +133,7 @@ export function LogsPageClient({
   pageSize,
   currentAdminId,
   viewerRole,
+  runType,
 }: LogsPageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -268,6 +273,28 @@ export function LogsPageClient({
           Custom Range
         </button>
 
+        {/* Run type filter — super-admin only */}
+        {viewerRole === "super-admin" && (
+          <>
+            <div className="h-4 w-px bg-border mx-1" />
+            {(["all", "manual", "automated"] as const).map((rt) => (
+              <button
+                key={rt}
+                onClick={() => navigate({ runType: rt === "all" ? undefined : rt })}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium transition-all border flex items-center gap-1",
+                  runType === rt || (rt === "all" && runType === "all")
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                    : "bg-background border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+                )}
+              >
+                {rt === "automated" && <Zap className="h-3 w-3" />}
+                {rt.charAt(0).toUpperCase() + rt.slice(1)}
+              </button>
+            ))}
+          </>
+        )}
+
         {/* Custom inputs inline */}
         {showCustom && (
           <>
@@ -341,9 +368,7 @@ export function LogsPageClient({
               <thead>
                 <tr className="border-b bg-muted/40">
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Script</th>
-                  {isOverall && (
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Member</th>
-                  )}
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Member</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Time</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Duration</th>
@@ -352,7 +377,7 @@ export function LogsPageClient({
               </thead>
               <tbody className="divide-y">
                 {logs.map((log) => (
-                  <LogTableRow key={log.id} log={log} showUser={isOverall} />
+                  <LogTableRow key={log.id} log={log} />
                 ))}
               </tbody>
             </table>
@@ -381,20 +406,32 @@ export function LogsPageClient({
 
 // ─── Table row ────────────────────────────────────────────────────────────────
 
-function LogTableRow({ log, showUser }: { log: LogRow; showUser: boolean }) {
+function LogTableRow({ log }: { log: LogRow }) {
   return (
     <tr className="hover:bg-muted/30 transition-colors group">
-      <td className="px-4 py-3 font-medium">{log.scriptName}</td>
-      {showUser && (
-        <td className="px-4 py-3 text-muted-foreground text-xs">
+      <td className="px-4 py-3 font-medium">
+        <div>
+          {log.scriptName}
+          {log.isAutomated && log.websiteName && (
+            <p className="text-xs text-muted-foreground font-normal mt-0.5">{log.websiteName}</p>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-muted-foreground text-xs">
+        {log.isAutomated ? (
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 border border-violet-200 px-2.5 py-1 text-xs font-medium text-violet-600">
+            <Zap className="h-3 w-3" />
+            Automated
+          </div>
+        ) : (
           <div className="flex items-center gap-2">
             <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold uppercase shrink-0">
               {log.userName[0]}
             </div>
             {log.userName}
           </div>
-        </td>
-      )}
+        )}
+      </td>
       <td className="px-4 py-3"><StatusBadge status={log.status} /></td>
       <td className="px-4 py-3 text-muted-foreground text-xs">{formatDateTime(log.startedAt)}</td>
       <td className="px-4 py-3 text-muted-foreground text-xs">{log.durationMs != null ? formatDuration(log.durationMs) : "—"}</td>
@@ -410,7 +447,11 @@ function LogTableRow({ log, showUser }: { log: LogRow; showUser: boolean }) {
               <DialogTitle>{log.scriptName}</DialogTitle>
               <div className="flex items-center gap-3 pt-1 text-sm text-muted-foreground flex-wrap">
                 <StatusBadge status={log.status} />
-                <span>{log.userName}</span>
+                {log.isAutomated ? (
+                  <span className="inline-flex items-center gap-1 text-violet-600"><Zap className="h-3 w-3" />Automated{log.websiteName ? ` · ${log.websiteName}` : ""}</span>
+                ) : (
+                  <span>{log.userName}</span>
+                )}
                 <span>{new Date(log.startedAt).toLocaleString("en-PK", { timeZone: PKT, hour12: true })}</span>
                 {log.durationMs != null && <span>{formatDuration(log.durationMs)}</span>}
               </div>

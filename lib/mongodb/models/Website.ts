@@ -5,10 +5,20 @@ export interface IWebsiteAssignee {
   userName: string;
 }
 
+export interface IWebsiteSitemap {
+  url: string;
+  discoveredAt: Date;
+}
+
 export interface IWebsite extends Document {
   name: string;
   url: string;
   assignedTo: IWebsiteAssignee[];
+  automationEnabled: boolean;
+  gscServiceAccountName: string;
+  bingApiKey: string;
+  robotsTxtUrl: string;
+  sitemaps: IWebsiteSitemap[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +29,14 @@ const WebsiteSchema = new Schema<IWebsite>(
     url:        { type: String, default: "",    trim: true },
     assignedTo: {
       type: [{ userId: String, userName: String, _id: false }],
+      default: [],
+    },
+    automationEnabled:     { type: Boolean, default: false },
+    gscServiceAccountName: { type: String,  default: "" },
+    bingApiKey:            { type: String,  default: "" },
+    robotsTxtUrl:          { type: String,  default: "" },
+    sitemaps: {
+      type: [{ url: { type: String }, discoveredAt: { type: Date }, _id: false }],
       default: [],
     },
   },

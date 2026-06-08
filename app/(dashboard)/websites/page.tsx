@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { connectDB, Website, User, Group } from "@/lib/mongodb";
+import { connectDB, Website, User, Group, Settings } from "@/lib/mongodb";
 import { WebsitesClient, type WebsiteRow, type MemberOption } from "./websites-client";
 
 export default async function WebsitesPage() {
@@ -40,13 +40,29 @@ export default async function WebsitesPage() {
     rawWebsites = await Website.find({ "assignedTo.userId": myId }).sort({ name: 1 }).lean();
   }
 
-  const websites: WebsiteRow[] = rawWebsites.map((w) => ({
-    id:         w._id.toString(),
-    name:       w.name,
-    url:        w.url ?? "",
-    assignedTo: w.assignedTo.map((a) => ({ userId: a.userId, userName: a.userName })),
-    createdAt:  w.createdAt.toISOString(),
-  }));
+  const websites: WebsiteRow[] = rawWebsites.map((w) => {
+    const raw = w as unknown as Record<string, unknown>;
+    return {
+      id:         w._id.toString(),
+      name:       w.name,
+      url:        w.url ?? "",
+      assignedTo: w.assignedTo.map((a) => ({ userId: a.userId, userName: a.userName })),
+      createdAt:  w.createdAt.toISOString(),
+      // automation fields — only populated for super-admin
+      automationEnabled:     role === "super-admin" ? !!(raw.automationEnabled)                       : false,
+      gscServiceAccountName: role === "super-admin" ? ((raw.gscServiceAccountName as string) ?? "")  : "",
+      bingApiKey:            role === "super-admin" ? ((raw.bingApiKey as string) ?? "")              : "",
+      robotsTxtUrl:          role === "super-admin" ? ((raw.robotsTxtUrl as string) ?? "")            : "",
+      sitemapCount:          role === "super-admin" ? ((raw.sitemaps as unknown[]) ?? []).length       : 0,
+    };
+  });
+
+  // Service account names for the automation dialog (super-admin only)
+  let serviceAccountNames: string[] = [];
+  if (role === "super-admin") {
+    const settings = await Settings.findOne({ singleton: true }).lean();
+    serviceAccountNames = (settings?.serviceAccounts ?? []).map((a) => a.name);
+  }
 
   return (
     <Suspense>
@@ -55,6 +71,7 @@ export default async function WebsitesPage() {
         members={members}
         viewerRole={role}
         currentUserId={myId}
+        serviceAccountNames={serviceAccountNames}
       />
     </Suspense>
   );

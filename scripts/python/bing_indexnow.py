@@ -15,8 +15,7 @@ from urllib.parse import urlparse
 
 import requests
 
-# Shared IndexNow API key for all sites
-INDEXNOW_KEY = "be54d4b639b44b8ca5b9cd5d5493a8e6"
+DEFAULT_INDEXNOW_KEY = "be54d4b639b44b8ca5b9cd5d5493a8e6"
 BATCH_SIZE = 200
 
 
@@ -33,7 +32,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--urls", required=True, help="Newline-separated URLs to submit")
     parser.add_argument("--output_file", required=False, help="Path to write submission log CSV")
+    parser.add_argument("--api_key", required=False, default="", help="IndexNow API key (overrides default)")
     args = parser.parse_args()
+
+    INDEXNOW_KEY = args.api_key.strip() if args.api_key and args.api_key.strip() else DEFAULT_INDEXNOW_KEY
 
     # When the URL list is large, the route writes it to a temp .txt file
     # and passes the file path instead of the raw string.
