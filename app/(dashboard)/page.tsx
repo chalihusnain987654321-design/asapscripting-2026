@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB, ExecutionLog, Backlink, ContentTask, Group } from "@/lib/mongodb";
@@ -32,8 +33,9 @@ export default async function OverviewPage({
   searchParams: { from?: string; to?: string };
 }) {
   const session = await getServerSession(authOptions);
-  const role = session!.user.role;
-  const myId = session!.user.id;
+  if (!session) redirect("/login");
+  const role = session.user.role;
+  const myId = session.user.id;
   const { from, to } = searchParams;
 
   await connectDB();
