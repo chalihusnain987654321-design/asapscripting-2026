@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Loader2, Users, Globe, ExternalLink, UserPlus, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -495,16 +495,12 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
             No service accounts found. Add one in Settings first.
           </p>
         ) : (
-          <select
+          <SearchableSelect
+            options={serviceAccountNames}
             value={gscAccount}
-            onChange={(e) => setGscAccount(e.target.value)}
-            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">— Select service account —</option>
-            {serviceAccountNames.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
+            onChange={setGscAccount}
+            placeholder="— Select service account —"
+          />
         )}
       </div>
 
@@ -565,6 +561,79 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
           Save Settings
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ─── Searchable Select ────────────────────────────────────────────────────────
+
+function SearchableSelect({ options, value, onChange, placeholder }: {
+  options:     string[];
+  value:       string;
+  onChange:    (v: string) => void;
+  placeholder: string;
+}) {
+  const [open,   setOpen]   = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filtered = options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => { setOpen((v) => !v); setSearch(""); }}
+        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm text-left flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className={value ? "text-foreground" : "text-muted-foreground"}>
+          {value || placeholder}
+        </span>
+        <svg className="h-4 w-4 text-muted-foreground shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+          <div className="p-2 border-b">
+            <input
+              autoFocus
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <ul className="max-h-48 overflow-y-auto py-1">
+            <li>
+              <button type="button" onClick={() => { onChange(""); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent">
+                {placeholder}
+              </button>
+            </li>
+            {filtered.length === 0 ? (
+              <li className="px-3 py-2 text-xs text-muted-foreground">No results.</li>
+            ) : filtered.map((o) => (
+              <li key={o}>
+                <button type="button" onClick={() => { onChange(o); setOpen(false); }}
+                  className={cn("w-full text-left px-3 py-1.5 text-sm hover:bg-accent", o === value && "bg-accent font-medium")}>
+                  {o}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
