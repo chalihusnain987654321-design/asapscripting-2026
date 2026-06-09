@@ -8,6 +8,8 @@ import { connectDB, Website, IndexingQueue, ExecutionLog, Settings } from "@/lib
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const MAX_SITEMAPS_PER_RUN = 10;
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const pythonBin = process.env.PYTHON_EXECUTABLE || "python3";
@@ -103,8 +105,11 @@ export async function POST(req: Request) {
     const websiteName = website.name;
     const raw         = website as unknown as Record<string, unknown>;
 
+    console.log(`\n[AUTOMATION] Processing: ${websiteName}`);
+
     const automationStartDate = (raw.automationStartDate as Date | null) ?? null;
     if (automationStartDate && automationStartDate > new Date()) {
+      console.log(`[AUTOMATION] Skipping ${websiteName} — start date not reached`);
       results.push({ websiteId, name: websiteName, steps: [`⏳ Scheduled to start at ${automationStartDate.toISOString()}`] });
       continue;
     }
@@ -146,6 +151,7 @@ export async function POST(req: Request) {
                 { _id: website._id },
                 { $set: { sitemaps: sitemapUrls.map((url) => ({ url, discoveredAt: now })) } }
               );
+              console.log(`[AUTOMATION] ${websiteName}: discovered ${sitemapUrls.length} sitemap(s)`);
               steps.push(`✓ Discovered ${sitemapUrls.length} sitemap(s)`);
             } else {
               steps.push("⚠ Sitemap discovery ran but found no sitemaps");
@@ -160,8 +166,13 @@ export async function POST(req: Request) {
 
       // ── Step 2: Extract URLs from each sitemap → add to queue ─────────────
       let newUrlsAdded = 0;
+      const sitemapsToProcess = sitemapUrls.slice(0, MAX_SITEMAPS_PER_RUN);
+      if (sitemapUrls.length > MAX_SITEMAPS_PER_RUN) {
+        console.log(`[AUTOMATION] ${websiteName}: processing first ${MAX_SITEMAPS_PER_RUN} of ${sitemapUrls.length} sitemaps`);
+      }
 
-      for (const sitemapUrl of sitemapUrls) {
+      for (const sitemapUrl of sitemapsToProcess) {
+        console.log(`[AUTOMATION] ${websiteName}: extracting URLs from ${sitemapUrl}`);
         const urlCsvFile = join(tmpdir(), `asap_auto_urls_${websiteId}_${randomUUID()}.csv`);
         tempFiles.push(urlCsvFile);
 
@@ -188,11 +199,16 @@ export async function POST(req: Request) {
         }
       }
 
-      if (sitemapUrls.length > 0) {
-        steps.push(`✓ Added ${newUrlsAdded} new URLs to queue`);
+      if (sitemapsToProcess.length > 0) {
+        const note = sitemapUrls.length > MAX_SITEMAPS_PER_RUN
+          ? ` (${sitemapUrls.length - MAX_SITEMAPS_PER_RUN} sitemaps remaining for next run)`
+          : "";
+        steps.push(`✓ Added ${newUrlsAdded} new URLs to queue${note}`);
+        console.log(`[AUTOMATION] ${websiteName}: added ${newUrlsAdded} URLs to queue`);
       }
 
       // ── Step 3: GSC Indexing (200 pending URLs) ───────────────────────────
+      console.log(`[AUTOMATION] ${websiteName}: starting GSC indexing`);
       const serviceAccount = settings?.serviceAccounts.find((a) => a.name === gscAccountName);
 
       if (!serviceAccount) {
@@ -256,6 +272,7 @@ export async function POST(req: Request) {
       }
 
       // ── Step 4: Bing IndexNow (10,000 pending URLs) ───────────────────────
+      console.log(`[AUTOMATION] ${websiteName}: starting Bing indexing`);
       const pendingBing = await IndexingQueue.find({ websiteId, bingStatus: "pending" })
         .limit(10000)
         .lean();
@@ -332,8 +349,10 @@ export async function POST(req: Request) {
       websiteName,
     });
 
+    console.log(`[AUTOMATION] ${websiteName}: done — ${steps.join(" | ")}`);
     results.push({ websiteId, name: websiteName, steps });
   }
 
+  console.log(`[AUTOMATION] All done. Processed ${results.length} website(s).`);
   return Response.json({ processed: results.length, results });
 }
