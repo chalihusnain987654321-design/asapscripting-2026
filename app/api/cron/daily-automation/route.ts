@@ -34,21 +34,38 @@ async function cleanupFiles(paths: string[]) {
   await Promise.allSettled(paths.map((p) => unlink(p)));
 }
 
-// Parse one-URL-per-line TXT file
 async function parseTxtFile(path: string): Promise<string[]> {
   const text = await readFile(path, "utf-8");
   return text.split("\n").map((l) => l.trim()).filter(Boolean);
 }
 
-// Parse CSV where first column is URL (skip header row)
-async function parseUrlCsv(path: string): Promise<string[]> {
+async function parseGscResultCsv(path: string): Promise<{ url: string; success: boolean; error: string }[]> {
   const text = await readFile(path, "utf-8");
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
-  return lines.slice(1).map((l) => l.split(",")[0].replace(/^"|"$/g, "").trim()).filter(Boolean);
+  return lines.slice(1).map((l) => {
+    const parts  = l.split(",");
+    const url    = parts[0]?.replace(/^"|"$/g, "").trim() ?? "";
+    const result = parts.slice(2).join(",").replace(/^"|"$/g, "").trim();
+    const success = result === "Indexed Successfully";
+    return { url, success, error: success ? "" : result };
+  });
 }
 
-// Node.js sitemap URL extractor — no Python needed, parallel fetching
+async function parseBingResultCsv(path: string): Promise<{ url: string; success: boolean; error: string }[]> {
+  const text = await readFile(path, "utf-8");
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  return lines.slice(1).map((l) => {
+    const parts  = l.split(",");
+    const url    = parts[0]?.replace(/^"|"$/g, "").trim() ?? "";
+    const status = parts[1]?.replace(/^"|"$/g, "").trim() ?? "";
+    const success = status === "Submitted";
+    return { url, success, error: success ? "" : status };
+  });
+}
+
+// Node.js sitemap URL extractor — parallel, no Python needed
 async function extractPageUrls(
   sitemapUrl: string,
   maxUrls: number
@@ -76,7 +93,8 @@ async function extractPageUrls(
     const xml = await fetchXml(url);
     if (!xml) return;
 
-    const isSitemapIndex = xml.includes("<sitemapindex") ||
+    const isSitemapIndex =
+      xml.includes("<sitemapindex") ||
       (xml.includes("<sitemap>") && xml.includes("<loc>") && !xml.includes("<urlset"));
 
     if (isSitemapIndex) {
@@ -89,7 +107,9 @@ async function extractPageUrls(
       log += `\n  [index] ${url} → ${childUrls.length} child sitemaps`;
       for (let i = 0; i < childUrls.length; i += SITEMAP_CONCURRENCY) {
         if (collected.length >= maxUrls) break;
-        await Promise.all(childUrls.slice(i, i + SITEMAP_CONCURRENCY).map((u) => processSitemap(u, depth + 1)));
+        await Promise.all(
+          childUrls.slice(i, i + SITEMAP_CONCURRENCY).map((u) => processSitemap(u, depth + 1))
+        );
       }
     } else {
       const blocks = xml.match(/<url>[\s\S]*?<\/url>/g) ?? [];
@@ -106,38 +126,53 @@ async function extractPageUrls(
   return { urls: collected, log };
 }
 
-// Parse GSC result CSV: URL,HTTP_Status,Result
-async function parseGscResultCsv(path: string): Promise<{ url: string; success: boolean; error: string }[]> {
-  const text = await readFile(path, "utf-8");
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 2) return [];
-  return lines.slice(1).map((l) => {
-    const parts = l.split(",");
-    const url    = parts[0]?.replace(/^"|"$/g, "").trim() ?? "";
-    const result = parts.slice(2).join(",").replace(/^"|"$/g, "").trim();
-    const success = result === "Indexed Successfully";
-    return { url, success, error: success ? "" : result };
-  });
-}
-
-// Parse Bing result CSV: URL,Status,Batch,HTTP Code
-async function parseBingResultCsv(path: string): Promise<{ url: string; success: boolean; error: string }[]> {
-  const text = await readFile(path, "utf-8");
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 2) return [];
-  return lines.slice(1).map((l) => {
-    const parts = l.split(",");
-    const url    = parts[0]?.replace(/^"|"$/g, "").trim() ?? "";
-    const status = parts[1]?.replace(/^"|"$/g, "").trim() ?? "";
-    const success = status === "Submitted";
-    return { url, success, error: success ? "" : status };
-  });
+// Save one per-step execution log immediately after the step completes
+async function saveStepLog({
+  scriptSlug,
+  scriptName,
+  websiteId,
+  websiteName,
+  output,
+  status,
+  exitCode,
+  startedAt,
+}: {
+  scriptSlug:  string;
+  scriptName:  string;
+  websiteId:   string;
+  websiteName: string;
+  output:      string;
+  status:      "success" | "error";
+  exitCode:    number;
+  startedAt:   Date;
+}) {
+  const completedAt = new Date();
+  try {
+    await ExecutionLog.collection.insertOne({
+      userId:      null,
+      userEmail:   "system",
+      userName:    "Automated",
+      scriptSlug,
+      scriptName,
+      inputs:      { websiteId, websiteName },
+      output:      output.trim(),
+      status,
+      exitCode,
+      startedAt,
+      completedAt,
+      durationMs:  completedAt.getTime() - startedAt.getTime(),
+      isAutomated: true,
+      websiteId,
+      websiteName,
+    });
+  } catch (err) {
+    console.error(`[LOG ERROR] ${websiteName}/${scriptSlug}: ${err}`);
+  }
 }
 
 // ─── route ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
-  // Verify cron secret
   const authHeader = req.headers.get("Authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
@@ -146,9 +181,8 @@ export async function POST(req: Request) {
 
   await connectDB();
 
-  // Fetch all automation-enabled websites
   const allWebsites = await Website.find({}).lean();
-  const websites = allWebsites.filter(
+  const websites    = allWebsites.filter(
     (w) => !!(w as unknown as Record<string, unknown>).automationEnabled
   );
 
@@ -164,33 +198,45 @@ export async function POST(req: Request) {
     const websiteName = website.name;
     const raw         = website as unknown as Record<string, unknown>;
 
-    console.log(`\n[AUTOMATION] Processing: ${websiteName}`);
+    console.log(`\n[AUTOMATION] ═══ ${websiteName} ═══`);
 
     const automationStartDate = (raw.automationStartDate as Date | null) ?? null;
     if (automationStartDate && automationStartDate > new Date()) {
-      console.log(`[AUTOMATION] Skipping ${websiteName} — start date not reached`);
-      results.push({ websiteId, name: websiteName, steps: [`⏳ Scheduled to start at ${automationStartDate.toISOString()}`] });
+      console.log(`[AUTOMATION] Skipping — start date not reached (${automationStartDate.toISOString()})`);
+      results.push({ websiteId, name: websiteName, steps: [`⏳ Scheduled for ${automationStartDate.toISOString()}`] });
       continue;
     }
 
-    const gscAccountName = (raw.gscServiceAccountName as string) ?? "";
-    const bingApiKey     = (raw.bingApiKey as string) ?? "";
-    const robotsTxtUrl   = ((raw.robotsTxtUrl as string) || (website.url ? `${website.url.replace(/\/$/, "")}/robots.txt` : "")).replace(/([^:])\/\/+/g, "$1/");
+    const gscAccountName   = (raw.gscServiceAccountName as string) ?? "";
+    const bingApiKey       = (raw.bingApiKey as string) ?? "";
+    const robotsTxtUrl     = (
+      (raw.robotsTxtUrl as string) ||
+      (website.url ? `${website.url.replace(/\/$/, "")}/robots.txt` : "")
+    ).replace(/([^:])\/\/+/g, "$1/");
     const existingSitemaps = (raw.sitemaps as { url: string }[]) ?? [];
 
     const tempFiles: string[] = [];
     const steps: string[] = [];
-    const startedAt = new Date();
-    let fullOutput = "";
 
     try {
-      // ── Step 1: Discover sitemaps (only if none saved yet) ────────────────
+      // ── Step 1: Sitemap Discovery ─────────────────────────────────────────
+      const step1Start = new Date();
       let sitemapUrls: string[] = existingSitemaps.map((s) => s.url);
+      let step1Output = "";
+      let step1Status: "success" | "error" = "success";
+      let step1ExitCode = 0;
 
-      if (sitemapUrls.length === 0) {
-        if (!robotsTxtUrl) {
-          steps.push("⚠ Skipped sitemap discovery: no robots.txt URL configured.");
+      try {
+        if (sitemapUrls.length > 0) {
+          step1Output = `Using ${sitemapUrls.length} saved sitemap(s):\n\n${sitemapUrls.join("\n")}`;
+          console.log(`[STEP 1] ${websiteName}: using ${sitemapUrls.length} saved sitemap(s)`);
+        } else if (!robotsTxtUrl) {
+          step1Output   = "No robots.txt URL configured. Cannot discover sitemaps.";
+          step1Status   = "error";
+          step1ExitCode = 1;
+          console.log(`[STEP 1] ${websiteName}: no robots.txt URL`);
         } else {
+          console.log(`[STEP 1] ${websiteName}: fetching ${robotsTxtUrl}`);
           const sitemapOutputFile = join(tmpdir(), `asap_auto_sitemaps_${websiteId}_${randomUUID()}.txt`);
           tempFiles.push(sitemapOutputFile);
 
@@ -198,202 +244,295 @@ export async function POST(req: Request) {
             "--robots_urls", robotsTxtUrl,
             "--output_file", sitemapOutputFile,
           ]);
-          fullOutput += `\n[SITEMAP DISCOVERY]\n${output}`;
+          step1Output   = output;
+          step1ExitCode = exitCode;
 
           if (exitCode === 0) {
             const discovered = await parseTxtFile(sitemapOutputFile).catch(() => []);
             sitemapUrls = discovered;
-
+            step1Output += `\n\nResult: ${sitemapUrls.length} sitemap(s) discovered.`;
             if (sitemapUrls.length > 0) {
-              const now = new Date();
               await Website.collection.updateOne(
                 { _id: website._id },
-                { $set: { sitemaps: sitemapUrls.map((url) => ({ url, discoveredAt: now })) } }
+                { $set: { sitemaps: sitemapUrls.map((url) => ({ url, discoveredAt: new Date() })) } }
               );
-              console.log(`[AUTOMATION] ${websiteName}: discovered ${sitemapUrls.length} sitemap(s)`);
-              steps.push(`✓ Discovered ${sitemapUrls.length} sitemap(s)`);
+              console.log(`[STEP 1] ${websiteName}: saved ${sitemapUrls.length} sitemap(s)`);
             } else {
-              steps.push("⚠ Sitemap discovery ran but found no sitemaps");
+              step1Status = "error";
             }
           } else {
-            steps.push(`✗ Sitemap discovery failed (exit ${exitCode})`);
+            step1Status = "error";
+            console.log(`[STEP 1] ${websiteName}: script exited ${exitCode}`);
           }
         }
-      } else {
-        steps.push(`✓ Using ${sitemapUrls.length} saved sitemap(s)`);
+      } catch (err) {
+        step1Output  += `\nException: ${err}`;
+        step1Status   = "error";
+        step1ExitCode = -1;
+        console.error(`[STEP 1] ${websiteName}: exception —`, err);
       }
 
-      // ── Step 2: Extract URLs via Node.js (parallel, no Python) ──────────
+      await saveStepLog({
+        scriptSlug:  "automation-sitemap-discovery",
+        scriptName:  "Sitemap Discovery",
+        websiteId, websiteName,
+        output:    step1Output,
+        status:    step1Status,
+        exitCode:  step1ExitCode,
+        startedAt: step1Start,
+      });
+      steps.push(step1Status === "success"
+        ? `✓ Step 1: ${sitemapUrls.length} sitemap(s)`
+        : "✗ Step 1: sitemap discovery failed");
+
+      // ── Step 2: URL Extraction ────────────────────────────────────────────
+      const step2Start = new Date();
+      let step2Output = "";
+      let step2Status: "success" | "error" = "success";
       let newUrlsAdded = 0;
 
-      if (sitemapUrls.length > 0) {
-        console.log(`[AUTOMATION] ${websiteName}: extracting URLs from ${sitemapUrls.length} sitemap(s)`);
-        for (const sitemapUrl of sitemapUrls) {
-          if (newUrlsAdded >= MAX_URLS_PER_WEBSITE) break;
-          const { urls, log } = await extractPageUrls(sitemapUrl, MAX_URLS_PER_WEBSITE - newUrlsAdded);
-          fullOutput += `\n[URL EXTRACT: ${sitemapUrl}]${log}`;
+      try {
+        if (sitemapUrls.length === 0) {
+          step2Output = "No sitemaps available — skipping URL extraction.";
+          step2Status = "error";
+          console.log(`[STEP 2] ${websiteName}: skipped — no sitemaps`);
+        } else {
+          console.log(`[STEP 2] ${websiteName}: extracting URLs from ${sitemapUrls.length} sitemap(s)`);
+          let extractLog = `Extracting from ${sitemapUrls.length} sitemap(s) (max ${MAX_URLS_PER_WEBSITE} URLs):\n`;
 
-          for (const url of urls) {
-            try {
-              await IndexingQueue.updateOne(
-                { websiteId, url },
-                { $setOnInsert: { websiteId, url, discoveredAt: new Date(), gscStatus: "pending", bingStatus: "pending" } },
-                { upsert: true }
-              );
-              newUrlsAdded++;
-            } catch { /* duplicate — skip */ }
+          for (const sitemapUrl of sitemapUrls) {
+            if (newUrlsAdded >= MAX_URLS_PER_WEBSITE) break;
+            const { urls, log } = await extractPageUrls(sitemapUrl, MAX_URLS_PER_WEBSITE - newUrlsAdded);
+            extractLog += `\n${sitemapUrl}:${log}\n  → ${urls.length} page URLs`;
+
+            for (const url of urls) {
+              try {
+                const res = await IndexingQueue.updateOne(
+                  { websiteId, url },
+                  {
+                    $setOnInsert: {
+                      websiteId, url,
+                      discoveredAt: new Date(),
+                      gscStatus:    "pending",
+                      bingStatus:   "pending",
+                    },
+                  },
+                  { upsert: true }
+                );
+                if (res.upsertedCount > 0) newUrlsAdded++;
+              } catch { /* duplicate — skip */ }
+            }
           }
+
+          step2Output = `${extractLog}\n\nResult: ${newUrlsAdded} new URLs added to queue.`;
+          console.log(`[STEP 2] ${websiteName}: ${newUrlsAdded} new URLs added`);
         }
-        steps.push(`✓ Added ${newUrlsAdded} new URLs to queue`);
-        console.log(`[AUTOMATION] ${websiteName}: added ${newUrlsAdded} URLs to queue`);
+      } catch (err) {
+        step2Output += `\nException: ${err}`;
+        step2Status  = "error";
+        console.error(`[STEP 2] ${websiteName}: exception —`, err);
       }
 
-      // ── Step 3: GSC Indexing (200 pending URLs) ───────────────────────────
-      console.log(`[AUTOMATION] ${websiteName}: starting GSC indexing`);
-      const serviceAccount = settings?.serviceAccounts.find((a) => a.name === gscAccountName);
+      await saveStepLog({
+        scriptSlug:  "automation-url-extraction",
+        scriptName:  "URL Extraction",
+        websiteId, websiteName,
+        output:    step2Output,
+        status:    step2Status,
+        exitCode:  step2Status === "success" ? 0 : 1,
+        startedAt: step2Start,
+      });
+      steps.push(step2Status === "success"
+        ? `✓ Step 2: ${newUrlsAdded} new URLs`
+        : "✗ Step 2: URL extraction failed");
 
-      if (!serviceAccount) {
-        steps.push("⚠ Skipped GSC indexing: service account not found");
-      } else {
-        const pendingGsc = await IndexingQueue.find({ websiteId, gscStatus: "pending" })
-          .limit(200)
+      // ── Step 3: GSC Indexing (random 191-200 URLs) ────────────────────────
+      const step3Start = new Date();
+      let step3Output = "";
+      let step3Status: "success" | "error" = "success";
+      let step3ExitCode = 0;
+
+      try {
+        const serviceAccount = settings?.serviceAccounts.find((a) => a.name === gscAccountName);
+
+        if (!serviceAccount) {
+          const reason = gscAccountName
+            ? `Service account "${gscAccountName}" not found in settings.`
+            : "No GSC service account configured for this website.";
+          step3Output   = reason;
+          step3Status   = "error";
+          step3ExitCode = 1;
+          console.log(`[STEP 3] ${websiteName}: ${reason}`);
+        } else {
+          // Randomize 191-200 to avoid pattern detection by Google
+          const gscLimit   = Math.floor(Math.random() * 10) + 191;
+          const pendingGsc = await IndexingQueue.find({ websiteId, gscStatus: "pending" })
+            .limit(gscLimit)
+            .lean();
+
+          if (pendingGsc.length === 0) {
+            step3Output = "No pending URLs for GSC indexing.";
+            console.log(`[STEP 3] ${websiteName}: no pending URLs`);
+          } else {
+            console.log(`[STEP 3] ${websiteName}: submitting ${pendingGsc.length} URLs to GSC (limit ${gscLimit})`);
+
+            const saFile  = join(tmpdir(), `asap_auto_sa_${websiteId}_${randomUUID()}.json`);
+            const inCsv   = join(tmpdir(), `asap_auto_gsc_in_${websiteId}_${randomUUID()}.csv`);
+            const outCsv  = join(tmpdir(), `asap_auto_gsc_out_${websiteId}_${randomUUID()}.csv`);
+            tempFiles.push(saFile, inCsv, outCsv);
+
+            await writeFile(saFile, serviceAccount.json);
+            await writeFile(inCsv, "url\n" + pendingGsc.map((q) => q.url).join("\n"));
+
+            const { output, exitCode } = await runScript("url_indexer.py", [
+              "--service_account_file", saFile,
+              "--csv_file", inCsv,
+              "--output_file", outCsv,
+            ]);
+            step3Output   = output;
+            step3ExitCode = exitCode;
+
+            if (exitCode === 0) {
+              const gscResults = await parseGscResultCsv(outCsv).catch(() => []);
+              const resultMap  = new Map(gscResults.map((r) => [r.url, r]));
+              let gscOk = 0, gscFail = 0;
+
+              for (const q of pendingGsc) {
+                const r = resultMap.get(q.url);
+                if (r?.success) {
+                  await IndexingQueue.updateOne(
+                    { _id: q._id },
+                    { $set: { gscStatus: "submitted", gscSubmittedAt: new Date(), gscError: null } }
+                  );
+                  gscOk++;
+                } else {
+                  await IndexingQueue.updateOne(
+                    { _id: q._id },
+                    { $set: { gscStatus: "failed", gscError: r?.error ?? "Unknown error" } }
+                  );
+                  gscFail++;
+                }
+              }
+              step3Output += `\n\nResult: ${gscOk} submitted, ${gscFail} failed (limit was ${gscLimit}).`;
+              console.log(`[STEP 3] ${websiteName}: GSC ${gscOk} ok, ${gscFail} failed`);
+            } else {
+              step3Status = "error";
+              await IndexingQueue.updateMany(
+                { _id: { $in: pendingGsc.map((q) => q._id) } },
+                { $set: { gscStatus: "failed", gscError: `Script exited ${exitCode}` } }
+              );
+              console.log(`[STEP 3] ${websiteName}: script exited ${exitCode}`);
+            }
+          }
+        }
+      } catch (err) {
+        step3Output  += `\nException: ${err}`;
+        step3Status   = "error";
+        step3ExitCode = -1;
+        console.error(`[STEP 3] ${websiteName}: exception —`, err);
+      }
+
+      await saveStepLog({
+        scriptSlug:  "automation-gsc-indexing",
+        scriptName:  "GSC Indexing",
+        websiteId, websiteName,
+        output:    step3Output,
+        status:    step3Status,
+        exitCode:  step3ExitCode,
+        startedAt: step3Start,
+      });
+      steps.push(step3Status === "success" ? "✓ Step 3: GSC indexing done" : "✗ Step 3: GSC failed");
+
+      // ── Step 4: Bing Indexing (random 9500-10000 URLs) ────────────────────
+      const step4Start = new Date();
+      let step4Output = "";
+      let step4Status: "success" | "error" = "success";
+      let step4ExitCode = 0;
+
+      try {
+        // Randomize 9500-10000 to avoid pattern detection by Bing
+        const bingLimit   = Math.floor(Math.random() * 501) + 9500;
+        const pendingBing = await IndexingQueue.find({ websiteId, bingStatus: "pending" })
+          .limit(bingLimit)
           .lean();
 
-        if (pendingGsc.length === 0) {
-          steps.push("✓ GSC: no pending URLs");
+        if (pendingBing.length === 0) {
+          step4Output = "No pending URLs for Bing IndexNow.";
+          console.log(`[STEP 4] ${websiteName}: no pending URLs`);
         } else {
-          const saFile   = join(tmpdir(), `asap_auto_sa_${websiteId}_${randomUUID()}.json`);
-          const inCsv    = join(tmpdir(), `asap_auto_gsc_in_${websiteId}_${randomUUID()}.csv`);
-          const outCsv   = join(tmpdir(), `asap_auto_gsc_out_${websiteId}_${randomUUID()}.csv`);
-          tempFiles.push(saFile, inCsv, outCsv);
+          console.log(`[STEP 4] ${websiteName}: submitting ${pendingBing.length} URLs to Bing (limit ${bingLimit})`);
 
-          await writeFile(saFile, serviceAccount.json);
+          const bingInFile  = join(tmpdir(), `asap_auto_bing_in_${websiteId}_${randomUUID()}.txt`);
+          const bingOutFile = join(tmpdir(), `asap_auto_bing_out_${websiteId}_${randomUUID()}.csv`);
+          tempFiles.push(bingInFile, bingOutFile);
 
-          // Write input CSV (url column)
-          const csvContent = "url\n" + pendingGsc.map((q) => q.url).join("\n");
-          await writeFile(inCsv, csvContent);
+          await writeFile(bingInFile, pendingBing.map((q) => q.url).join("\n"));
 
-          const { output, exitCode } = await runScript("url_indexer.py", [
-            "--service_account_file", saFile,
-            "--csv_file", inCsv,
-            "--output_file", outCsv,
-          ]);
-          fullOutput += `\n[GSC INDEXING]\n${output}`;
+          const bingArgs = ["--urls", bingInFile, "--output_file", bingOutFile];
+          if (bingApiKey) bingArgs.push("--api_key", bingApiKey);
+
+          const { output, exitCode } = await runScript("bing_indexnow.py", bingArgs);
+          step4Output   = output;
+          step4ExitCode = exitCode;
 
           if (exitCode === 0) {
-            const gscResults = await parseGscResultCsv(outCsv).catch(() => []);
-            const resultMap = new Map(gscResults.map((r) => [r.url, r]));
+            const bingResults = await parseBingResultCsv(bingOutFile).catch(() => []);
+            const resultMap   = new Map(bingResults.map((r) => [r.url, r]));
+            let bingOk = 0, bingFail = 0;
 
-            let gscOk = 0, gscFail = 0;
-            for (const q of pendingGsc) {
+            for (const q of pendingBing) {
               const r = resultMap.get(q.url);
               if (r?.success) {
                 await IndexingQueue.updateOne(
                   { _id: q._id },
-                  { $set: { gscStatus: "submitted", gscSubmittedAt: new Date(), gscError: null } }
+                  { $set: { bingStatus: "submitted", bingSubmittedAt: new Date(), bingError: null } }
                 );
-                gscOk++;
+                bingOk++;
               } else {
                 await IndexingQueue.updateOne(
                   { _id: q._id },
-                  { $set: { gscStatus: "failed", gscError: r?.error ?? "Unknown error" } }
+                  { $set: { bingStatus: "failed", bingError: r?.error ?? "Unknown error" } }
                 );
-                gscFail++;
+                bingFail++;
               }
             }
-            steps.push(`✓ GSC: ${gscOk} submitted, ${gscFail} failed`);
+            step4Output += `\n\nResult: ${bingOk} submitted, ${bingFail} failed (limit was ${bingLimit}).`;
+            console.log(`[STEP 4] ${websiteName}: Bing ${bingOk} ok, ${bingFail} failed`);
           } else {
+            step4Status = "error";
             await IndexingQueue.updateMany(
-              { _id: { $in: pendingGsc.map((q) => q._id) } },
-              { $set: { gscStatus: "failed", gscError: `Script exited with code ${exitCode}` } }
+              { _id: { $in: pendingBing.map((q) => q._id) } },
+              { $set: { bingStatus: "failed", bingError: `Script exited ${exitCode}` } }
             );
-            steps.push(`✗ GSC indexing script failed (exit ${exitCode})`);
+            console.log(`[STEP 4] ${websiteName}: script exited ${exitCode}`);
           }
         }
+      } catch (err) {
+        step4Output  += `\nException: ${err}`;
+        step4Status   = "error";
+        step4ExitCode = -1;
+        console.error(`[STEP 4] ${websiteName}: exception —`, err);
       }
 
-      // ── Step 4: Bing IndexNow (10,000 pending URLs) ───────────────────────
-      console.log(`[AUTOMATION] ${websiteName}: starting Bing indexing`);
-      const pendingBing = await IndexingQueue.find({ websiteId, bingStatus: "pending" })
-        .limit(10000)
-        .lean();
-
-      if (pendingBing.length === 0) {
-        steps.push("✓ Bing: no pending URLs");
-      } else {
-        const bingInFile  = join(tmpdir(), `asap_auto_bing_in_${websiteId}_${randomUUID()}.txt`);
-        const bingOutFile = join(tmpdir(), `asap_auto_bing_out_${websiteId}_${randomUUID()}.csv`);
-        tempFiles.push(bingInFile, bingOutFile);
-
-        await writeFile(bingInFile, pendingBing.map((q) => q.url).join("\n"));
-
-        const bingArgs = ["--urls", bingInFile, "--output_file", bingOutFile];
-        if (bingApiKey) bingArgs.push("--api_key", bingApiKey);
-
-        const { output, exitCode } = await runScript("bing_indexnow.py", bingArgs);
-        fullOutput += `\n[BING INDEXING]\n${output}`;
-
-        if (exitCode === 0) {
-          const bingResults = await parseBingResultCsv(bingOutFile).catch(() => []);
-          const resultMap = new Map(bingResults.map((r) => [r.url, r]));
-
-          let bingOk = 0, bingFail = 0;
-          for (const q of pendingBing) {
-            const r = resultMap.get(q.url);
-            if (r?.success) {
-              await IndexingQueue.updateOne(
-                { _id: q._id },
-                { $set: { bingStatus: "submitted", bingSubmittedAt: new Date(), bingError: null } }
-              );
-              bingOk++;
-            } else {
-              await IndexingQueue.updateOne(
-                { _id: q._id },
-                { $set: { bingStatus: "failed", bingError: r?.error ?? "Unknown error" } }
-              );
-              bingFail++;
-            }
-          }
-          steps.push(`✓ Bing: ${bingOk} submitted, ${bingFail} failed`);
-        } else {
-          await IndexingQueue.updateMany(
-            { _id: { $in: pendingBing.map((q) => q._id) } },
-            { $set: { bingStatus: "failed", bingError: `Script exited with code ${exitCode}` } }
-          );
-          steps.push(`✗ Bing indexing script failed (exit ${exitCode})`);
-        }
-      }
+      await saveStepLog({
+        scriptSlug:  "automation-bing-indexing",
+        scriptName:  "Bing Indexing",
+        websiteId, websiteName,
+        output:    step4Output,
+        status:    step4Status,
+        exitCode:  step4ExitCode,
+        startedAt: step4Start,
+      });
+      steps.push(step4Status === "success" ? "✓ Step 4: Bing indexing done" : "✗ Step 4: Bing failed");
 
     } finally {
       await cleanupFiles(tempFiles);
     }
 
-    // ── Execution log ─────────────────────────────────────────────────────
-    const durationMs = Date.now() - startedAt.getTime();
-    const hasFailure = steps.some((s) => s.startsWith("✗"));
-
-    await ExecutionLog.create({
-      userId:      null,
-      userEmail:   "system",
-      userName:    "Automated",
-      scriptSlug:  "automation-daily",
-      scriptName:  "Daily Automation",
-      inputs:      {},
-      output:      fullOutput.trim(),
-      status:      hasFailure ? "error" : "success",
-      exitCode:    hasFailure ? 1 : 0,
-      startedAt,
-      completedAt: new Date(),
-      durationMs,
-      isAutomated: true,
-      websiteId,
-      websiteName,
-    });
-
-    console.log(`[AUTOMATION] ${websiteName}: done — ${steps.join(" | ")}`);
+    console.log(`[AUTOMATION] ${websiteName}: ${steps.join(" | ")}`);
     results.push({ websiteId, name: websiteName, steps });
   }
 
-  console.log(`[AUTOMATION] All done. Processed ${results.length} website(s).`);
+  console.log(`\n[AUTOMATION] Done. ${results.length} website(s) processed.`);
   return Response.json({ processed: results.length, results });
 }
