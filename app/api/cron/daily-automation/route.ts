@@ -103,6 +103,12 @@ export async function POST(req: Request) {
     const websiteName = website.name;
     const raw         = website as unknown as Record<string, unknown>;
 
+    const automationStartDate = (raw.automationStartDate as Date | null) ?? null;
+    if (automationStartDate && automationStartDate > new Date()) {
+      results.push({ websiteId, name: websiteName, steps: [`⏳ Scheduled to start at ${automationStartDate.toISOString()}`] });
+      continue;
+    }
+
     const gscAccountName = (raw.gscServiceAccountName as string) ?? "";
     const bingApiKey     = (raw.bingApiKey as string) ?? "";
     const robotsTxtUrl   = (raw.robotsTxtUrl as string) ?? (website.url ? `${website.url}/robots.txt` : "");

@@ -18,6 +18,7 @@ export interface WebsiteRow {
   assignedTo: { userId: string; userName: string }[];
   createdAt: string;
   automationEnabled:     boolean;
+  automationStartDate:   string | null;
   gscServiceAccountName: string;
   bingApiKey:            string;
   robotsTxtUrl:          string;
@@ -361,6 +362,12 @@ function WebsiteForm({ existing, onSaved, onCancel }: {
 
 // ─── Automation Form ──────────────────────────────────────────────────────────
 
+function toDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
   website:             WebsiteRow;
   serviceAccountNames: string[];
@@ -368,6 +375,9 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
   onCancel:            () => void;
 }) {
   const [enabled,    setEnabled]    = useState(website.automationEnabled);
+  const [startDate,  setStartDate]  = useState<string>(
+    website.automationStartDate ? toDatetimeLocal(website.automationStartDate) : ""
+  );
   const [gscAccount, setGscAccount] = useState(website.gscServiceAccountName);
   const [bingKey,    setBingKey]    = useState(website.bingApiKey);
   const [robotsUrl,  setRobotsUrl]  = useState(
@@ -388,11 +398,14 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
 
     setError(""); setLoading(true);
 
+    const automationStartDate = startDate ? new Date(startDate).toISOString() : null;
+
     const res = await fetch(`/api/websites/${website.id}/automation`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         automationEnabled:     enabled,
+        automationStartDate,
         gscServiceAccountName: gscAccount,
         bingApiKey:            bingKey,
         robotsTxtUrl:          robotsUrl.trim(),
@@ -405,6 +418,7 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
     onSaved({
       id:                    website.id,
       automationEnabled:     enabled,
+      automationStartDate,
       gscServiceAccountName: gscAccount,
       bingApiKey:            bingKey,
       robotsTxtUrl:          robotsUrl.trim(),
@@ -434,6 +448,23 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
             enabled ? "translate-x-5" : "translate-x-0"
           )} />
         </button>
+      </div>
+
+      {/* Start Date/Time */}
+      <div className="space-y-1.5">
+        <Label>
+          Start Automation From
+          <span className="text-xs text-muted-foreground ml-1">(optional)</span>
+        </Label>
+        <input
+          type="datetime-local"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <p className="text-xs text-muted-foreground">
+          Leave blank to start immediately. If set, cron will skip this website until the selected date &amp; time.
+        </p>
       </div>
 
       {/* robots.txt URL */}

@@ -49,11 +49,12 @@ export default async function WebsitesPage() {
       assignedTo: w.assignedTo.map((a) => ({ userId: a.userId, userName: a.userName })),
       createdAt:  w.createdAt.toISOString(),
       // automation fields — only populated for super-admin
-      automationEnabled:     role === "super-admin" ? !!(raw.automationEnabled)                       : false,
-      gscServiceAccountName: role === "super-admin" ? ((raw.gscServiceAccountName as string) ?? "")  : "",
-      bingApiKey:            role === "super-admin" ? ((raw.bingApiKey as string) ?? "")              : "",
-      robotsTxtUrl:          role === "super-admin" ? ((raw.robotsTxtUrl as string) ?? "")            : "",
-      sitemapCount:          role === "super-admin" ? ((raw.sitemaps as unknown[]) ?? []).length       : 0,
+      automationEnabled:     role === "super-admin" ? !!(raw.automationEnabled)                                                        : false,
+      automationStartDate:   role === "super-admin" ? ((raw.automationStartDate as Date | null)?.toISOString() ?? null)              : null,
+      gscServiceAccountName: role === "super-admin" ? ((raw.gscServiceAccountName as string) ?? "")                                 : "",
+      bingApiKey:            role === "super-admin" ? ((raw.bingApiKey as string) ?? "")                                            : "",
+      robotsTxtUrl:          role === "super-admin" ? ((raw.robotsTxtUrl as string) ?? "")                                          : "",
+      sitemapCount:          role === "super-admin" ? ((raw.sitemaps as unknown[]) ?? []).length                                     : 0,
     };
   });
 

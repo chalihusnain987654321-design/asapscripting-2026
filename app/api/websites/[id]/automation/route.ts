@@ -15,6 +15,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const raw = w as unknown as Record<string, unknown>;
   return Response.json({
     automationEnabled:     !!(raw.automationEnabled),
+    automationStartDate:   (raw.automationStartDate as Date | null)?.toISOString() ?? null,
     gscServiceAccountName: (raw.gscServiceAccountName as string) ?? "",
     bingApiKey:            (raw.bingApiKey as string) ?? "",
     robotsTxtUrl:          (raw.robotsTxtUrl as string) ?? "",
@@ -29,8 +30,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (session.user.role !== "super-admin") return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
-  const { automationEnabled, gscServiceAccountName, bingApiKey, robotsTxtUrl } = body as {
+  const { automationEnabled, automationStartDate, gscServiceAccountName, bingApiKey, robotsTxtUrl } = body as {
     automationEnabled:     boolean;
+    automationStartDate:   string | null;
     gscServiceAccountName: string;
     bingApiKey:            string;
     robotsTxtUrl:          string;
@@ -45,6 +47,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     {
       $set: {
         automationEnabled:     !!automationEnabled,
+        automationStartDate:   automationStartDate ? new Date(automationStartDate) : null,
         gscServiceAccountName: gscServiceAccountName?.trim() ?? "",
         bingApiKey:            bingApiKey?.trim() ?? "",
         robotsTxtUrl:          robotsTxtUrl?.trim() ?? "",
@@ -60,6 +63,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     id:                    updated._id.toString(),
     name:                  updated.name,
     automationEnabled:     !!(raw.automationEnabled),
+    automationStartDate:   (raw.automationStartDate as Date | null)?.toISOString() ?? null,
     gscServiceAccountName: (raw.gscServiceAccountName as string) ?? "",
     bingApiKey:            (raw.bingApiKey as string) ?? "",
     robotsTxtUrl:          (raw.robotsTxtUrl as string) ?? "",

@@ -15,6 +15,7 @@ export interface IWebsite extends Document {
   url: string;
   assignedTo: IWebsiteAssignee[];
   automationEnabled: boolean;
+  automationStartDate: Date | null;
   gscServiceAccountName: string;
   bingApiKey: string;
   robotsTxtUrl: string;
@@ -32,6 +33,7 @@ const WebsiteSchema = new Schema<IWebsite>(
       default: [],
     },
     automationEnabled:     { type: Boolean, default: false },
+    automationStartDate:   { type: Date,    default: null },
     gscServiceAccountName: { type: String,  default: "" },
     bingApiKey:            { type: String,  default: "" },
     robotsTxtUrl:          { type: String,  default: "" },
