@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Globe,
   BarChart2,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +69,7 @@ const navItems: NavItem[] = [
   { kind: "link", href: "/daily-reports", label: "Daily Reports", icon: ClipboardList, minRole: "admin" },
   { kind: "link", href: "/audit", label: "Website Audit", icon: ClipboardCheck, minRole: "admin" },
   { kind: "link", href: "/logs", label: "Logs", icon: ScrollText, minRole: "admin" },
+  { kind: "link", href: "/indexing-queue", label: "Indexing Queue", icon: ListChecks, minRole: "super-admin" },
   { kind: "link", href: "/users", label: "Users", icon: Users, minRole: "super-admin" },
   { kind: "link", href: "/settings", label: "Settings", icon: Settings, minRole: "super-admin" },
 ];
