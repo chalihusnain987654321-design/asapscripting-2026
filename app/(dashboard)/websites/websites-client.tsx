@@ -524,9 +524,35 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
       </div>
 
       {website.sitemapCount > 0 && (
-        <p className="text-xs text-muted-foreground rounded-lg border p-2.5 bg-muted/30">
-          {website.sitemapCount} sitemap(s) already discovered. New sitemaps will not be re-scraped unless you clear them.
-        </p>
+        <div className="flex items-center justify-between rounded-lg border p-2.5 bg-muted/30">
+          <p className="text-xs text-muted-foreground">
+            {website.sitemapCount} sitemap(s) already discovered.
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!confirm(`Clear all ${website.sitemapCount} saved sitemaps? They will be re-scraped on next run.`)) return;
+              const res = await fetch(`/api/websites/${website.id}/automation`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  automationEnabled: enabled,
+                  automationStartDate: startDate ? new Date(startDate).toISOString() : null,
+                  gscServiceAccountName: gscAccount,
+                  bingApiKey: bingKey,
+                  robotsTxtUrl: robotsUrl.trim(),
+                  clearSitemaps: true,
+                }),
+              });
+              if (res.ok) {
+                onSaved({ id: website.id, sitemapCount: 0 });
+              }
+            }}
+            className="text-xs text-destructive hover:underline"
+          >
+            Clear sitemaps
+          </button>
+        </div>
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}

@@ -30,12 +30,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (session.user.role !== "super-admin") return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
-  const { automationEnabled, automationStartDate, gscServiceAccountName, bingApiKey, robotsTxtUrl } = body as {
+  const { automationEnabled, automationStartDate, gscServiceAccountName, bingApiKey, robotsTxtUrl, clearSitemaps } = body as {
     automationEnabled:     boolean;
     automationStartDate:   string | null;
     gscServiceAccountName: string;
     bingApiKey:            string;
     robotsTxtUrl:          string;
+    clearSitemaps?:        boolean;
   };
 
   await connectDB();
@@ -51,6 +52,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         gscServiceAccountName: gscServiceAccountName?.trim() ?? "",
         bingApiKey:            bingApiKey?.trim() ?? "",
         robotsTxtUrl:          robotsTxtUrl?.trim() ?? "",
+        ...(clearSitemaps ? { sitemaps: [] } : {}),
       },
     }
   );
