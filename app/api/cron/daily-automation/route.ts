@@ -8,7 +8,8 @@ import { connectDB, Website, IndexingQueue, ExecutionLog, Settings } from "@/lib
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const MAX_SITEMAPS_PER_RUN = 10;
+const MAX_URLS_PER_WEBSITE = 5000;
+const SITEMAP_CONCURRENCY  = 8;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,64 @@ async function parseUrlCsv(path: string): Promise<string[]> {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
   return lines.slice(1).map((l) => l.split(",")[0].replace(/^"|"$/g, "").trim()).filter(Boolean);
+}
+
+// Node.js sitemap URL extractor — no Python needed, parallel fetching
+async function extractPageUrls(
+  sitemapUrl: string,
+  maxUrls: number
+): Promise<{ urls: string[]; log: string }> {
+  const collected: string[] = [];
+  let log = "";
+
+  async function fetchXml(url: string): Promise<string | null> {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; ASAPBot/1.0)" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return null;
+      const text = await res.text();
+      if (text.trimStart().startsWith("<!DOCTYPE") || text.trimStart().startsWith("<html")) return null;
+      return text;
+    } catch {
+      return null;
+    }
+  }
+
+  async function processSitemap(url: string, depth: number): Promise<void> {
+    if (collected.length >= maxUrls || depth > 4) return;
+    const xml = await fetchXml(url);
+    if (!xml) return;
+
+    const isSitemapIndex = xml.includes("<sitemapindex") ||
+      (xml.includes("<sitemap>") && xml.includes("<loc>") && !xml.includes("<urlset"));
+
+    if (isSitemapIndex) {
+      const childUrls: string[] = [];
+      const blocks = xml.match(/<sitemap>[\s\S]*?<\/sitemap>/g) ?? [];
+      for (const block of blocks) {
+        const m = block.match(/<loc>\s*([^<]+)\s*<\/loc>/);
+        if (m) childUrls.push(m[1].trim());
+      }
+      log += `\n  [index] ${url} → ${childUrls.length} child sitemaps`;
+      for (let i = 0; i < childUrls.length; i += SITEMAP_CONCURRENCY) {
+        if (collected.length >= maxUrls) break;
+        await Promise.all(childUrls.slice(i, i + SITEMAP_CONCURRENCY).map((u) => processSitemap(u, depth + 1)));
+      }
+    } else {
+      const blocks = xml.match(/<url>[\s\S]*?<\/url>/g) ?? [];
+      for (const block of blocks) {
+        if (collected.length >= maxUrls) break;
+        const m = block.match(/<loc>\s*([^<]+)\s*<\/loc>/);
+        if (m) collected.push(m[1].trim());
+      }
+      log += `\n  [sitemap] ${url} → ${blocks.length} URLs`;
+    }
+  }
+
+  await processSitemap(sitemapUrl, 0);
+  return { urls: collected, log };
 }
 
 // Parse GSC result CSV: URL,HTTP_Status,Result
@@ -164,26 +223,16 @@ export async function POST(req: Request) {
         steps.push(`✓ Using ${sitemapUrls.length} saved sitemap(s)`);
       }
 
-      // ── Step 2: Extract URLs from each sitemap → add to queue ─────────────
+      // ── Step 2: Extract URLs via Node.js (parallel, no Python) ──────────
       let newUrlsAdded = 0;
-      const sitemapsToProcess = sitemapUrls.slice(0, MAX_SITEMAPS_PER_RUN);
-      if (sitemapUrls.length > MAX_SITEMAPS_PER_RUN) {
-        console.log(`[AUTOMATION] ${websiteName}: processing first ${MAX_SITEMAPS_PER_RUN} of ${sitemapUrls.length} sitemaps`);
-      }
 
-      for (const sitemapUrl of sitemapsToProcess) {
-        console.log(`[AUTOMATION] ${websiteName}: extracting URLs from ${sitemapUrl}`);
-        const urlCsvFile = join(tmpdir(), `asap_auto_urls_${websiteId}_${randomUUID()}.csv`);
-        tempFiles.push(urlCsvFile);
+      if (sitemapUrls.length > 0) {
+        console.log(`[AUTOMATION] ${websiteName}: extracting URLs from ${sitemapUrls.length} sitemap(s)`);
+        for (const sitemapUrl of sitemapUrls) {
+          if (newUrlsAdded >= MAX_URLS_PER_WEBSITE) break;
+          const { urls, log } = await extractPageUrls(sitemapUrl, MAX_URLS_PER_WEBSITE - newUrlsAdded);
+          fullOutput += `\n[URL EXTRACT: ${sitemapUrl}]${log}`;
 
-        const { output, exitCode } = await runScript("url_extractor.py", [
-          "--sitemap_url", sitemapUrl,
-          "--output_file", urlCsvFile,
-        ]);
-        fullOutput += `\n[URL EXTRACT: ${sitemapUrl}]\n${output}`;
-
-        if (exitCode === 0) {
-          const urls = await parseUrlCsv(urlCsvFile).catch(() => []);
           for (const url of urls) {
             try {
               await IndexingQueue.updateOne(
@@ -192,18 +241,10 @@ export async function POST(req: Request) {
                 { upsert: true }
               );
               newUrlsAdded++;
-            } catch {
-              // duplicate — skip
-            }
+            } catch { /* duplicate — skip */ }
           }
         }
-      }
-
-      if (sitemapsToProcess.length > 0) {
-        const note = sitemapUrls.length > MAX_SITEMAPS_PER_RUN
-          ? ` (${sitemapUrls.length - MAX_SITEMAPS_PER_RUN} sitemaps remaining for next run)`
-          : "";
-        steps.push(`✓ Added ${newUrlsAdded} new URLs to queue${note}`);
+        steps.push(`✓ Added ${newUrlsAdded} new URLs to queue`);
         console.log(`[AUTOMATION] ${websiteName}: added ${newUrlsAdded} URLs to queue`);
       }
 

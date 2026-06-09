@@ -154,12 +154,7 @@ def main():
             continue
 
         for parent in parent_sitemaps:
-            children = get_child_sitemaps(parent)
-            if children:
-                for c in children:
-                    all_sitemaps.add(c)
-            else:
-                all_sitemaps.add(parent)
+            all_sitemaps.add(parent)
 
     if not all_sitemaps:
         print("[ERROR] No sitemaps found.")
