@@ -381,7 +381,7 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
   const [gscAccount, setGscAccount] = useState(website.gscServiceAccountName);
   const [bingKey,    setBingKey]    = useState(website.bingApiKey);
   const [robotsUrl,  setRobotsUrl]  = useState(
-    website.robotsTxtUrl || (website.url ? `${website.url}/robots.txt` : "")
+    website.robotsTxtUrl || (website.url ? `${website.url.replace(/\/$/, "")}/robots.txt` : "")
   );
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState("");

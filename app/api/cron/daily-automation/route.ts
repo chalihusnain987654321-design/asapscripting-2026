@@ -111,7 +111,7 @@ export async function POST(req: Request) {
 
     const gscAccountName = (raw.gscServiceAccountName as string) ?? "";
     const bingApiKey     = (raw.bingApiKey as string) ?? "";
-    const robotsTxtUrl   = (raw.robotsTxtUrl as string) ?? (website.url ? `${website.url}/robots.txt` : "");
+    const robotsTxtUrl   = ((raw.robotsTxtUrl as string) || (website.url ? `${website.url.replace(/\/$/, "")}/robots.txt` : "")).replace(/([^:])\/\/+/g, "$1/");
     const existingSitemaps = (raw.sitemaps as { url: string }[]) ?? [];
 
     const tempFiles: string[] = [];
