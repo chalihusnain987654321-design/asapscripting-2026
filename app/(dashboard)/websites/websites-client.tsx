@@ -380,9 +380,10 @@ function AutomationForm({ website, serviceAccountNames, onSaved, onCancel }: {
   );
   const [gscAccount, setGscAccount] = useState(website.gscServiceAccountName);
   const [bingKey,    setBingKey]    = useState(website.bingApiKey);
-  const [robotsUrl,  setRobotsUrl]  = useState(
-    website.robotsTxtUrl || (website.url ? `${website.url.replace(/\/$/, "")}/robots.txt` : "")
-  );
+  const [robotsUrl,  setRobotsUrl]  = useState(() => {
+    const raw = website.robotsTxtUrl || (website.url ? `${website.url.replace(/\/$/, "")}/robots.txt` : "");
+    return raw.replace(/([^:])\/\/+/g, "$1/");
+  });
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState("");
 
