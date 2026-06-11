@@ -170,15 +170,9 @@ async function saveStepLog({
   }
 }
 
-// ─── route ───────────────────────────────────────────────────────────────────
+// ─── automation runner (runs fully in background after HTTP response) ─────────
 
-export async function POST(req: Request) {
-  const authHeader = req.headers.get("Authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+async function runAutomation() {
   await connectDB();
 
   const allWebsites = await Website.find({}).lean();
@@ -534,5 +528,22 @@ export async function POST(req: Request) {
   }
 
   console.log(`\n[AUTOMATION] Done. ${results.length} website(s) processed.`);
-  return Response.json({ processed: results.length, results });
+}
+
+// ─── route ───────────────────────────────────────────────────────────────────
+
+export async function POST(req: Request) {
+  const authHeader = req.headers.get("Authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Respond immediately — automation runs fully in background
+  // This prevents client disconnect from aborting the job
+  setTimeout(() => {
+    runAutomation().catch((err) => console.error("[AUTOMATION] Fatal:", err));
+  }, 0);
+
+  return Response.json({ message: "Automation started in background" });
 }
