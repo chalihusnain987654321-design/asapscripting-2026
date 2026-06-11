@@ -170,47 +170,38 @@ async function saveStepLog({
   }
 }
 
-// ─── automation runner (runs fully in background after HTTP response) ─────────
+// ─── per-website processor ────────────────────────────────────────────────────
 
-async function runAutomation() {
-  await connectDB();
+type SettingsDoc = { serviceAccounts: { name: string; json: string }[] } | null;
 
-  const allWebsites = await Website.find({}).lean();
-  const websites    = allWebsites.filter(
-    (w) => !!(w as unknown as Record<string, unknown>).automationEnabled
-  );
+async function processWebsite(
+  website: Record<string, unknown>,
+  settings: SettingsDoc,
+  results: { websiteId: string; name: string; steps: string[] }[]
+) {
+  const websiteId   = (website._id as { toString(): string }).toString();
+  const websiteName = website.name as string;
 
-  if (websites.length === 0) {
-    return Response.json({ message: "No automation-enabled websites." });
+  console.log(`\n[AUTOMATION] ═══ ${websiteName} ═══`);
+
+  const automationStartDate = (website.automationStartDate as Date | null) ?? null;
+  if (automationStartDate && automationStartDate > new Date()) {
+    console.log(`[AUTOMATION] Skipping — start date not reached`);
+    results.push({ websiteId, name: websiteName, steps: [`⏳ Scheduled for ${automationStartDate.toISOString()}`] });
+    return;
   }
 
-  const settings = await Settings.findOne({ singleton: true }).lean();
-  const results: { websiteId: string; name: string; steps: string[] }[] = [];
+  const gscAccountName   = (website.gscServiceAccountName as string) ?? "";
+  const bingApiKey       = (website.bingApiKey as string) ?? "";
+  const siteUrl          = (website.url as string) ?? "";
+  const robotsTxtUrl     = (
+    (website.robotsTxtUrl as string) ||
+    (siteUrl ? `${siteUrl.replace(/\/$/, "")}/robots.txt` : "")
+  ).replace(/([^:])\/\/+/g, "$1/");
+  const existingSitemaps = (website.sitemaps as { url: string }[]) ?? [];
 
-  for (const website of websites) {
-    const websiteId   = website._id.toString();
-    const websiteName = website.name;
-    const raw         = website as unknown as Record<string, unknown>;
-
-    console.log(`\n[AUTOMATION] ═══ ${websiteName} ═══`);
-
-    const automationStartDate = (raw.automationStartDate as Date | null) ?? null;
-    if (automationStartDate && automationStartDate > new Date()) {
-      console.log(`[AUTOMATION] Skipping — start date not reached (${automationStartDate.toISOString()})`);
-      results.push({ websiteId, name: websiteName, steps: [`⏳ Scheduled for ${automationStartDate.toISOString()}`] });
-      continue;
-    }
-
-    const gscAccountName   = (raw.gscServiceAccountName as string) ?? "";
-    const bingApiKey       = (raw.bingApiKey as string) ?? "";
-    const robotsTxtUrl     = (
-      (raw.robotsTxtUrl as string) ||
-      (website.url ? `${website.url.replace(/\/$/, "")}/robots.txt` : "")
-    ).replace(/([^:])\/\/+/g, "$1/");
-    const existingSitemaps = (raw.sitemaps as { url: string }[]) ?? [];
-
-    const tempFiles: string[] = [];
-    const steps: string[] = [];
+  const tempFiles: string[] = [];
+  const steps: string[] = [];
 
     try {
       // ── Step 1: Sitemap Discovery ─────────────────────────────────────────
@@ -246,8 +237,9 @@ async function runAutomation() {
             sitemapUrls = discovered;
             step1Output += `\n\nResult: ${sitemapUrls.length} sitemap(s) discovered.`;
             if (sitemapUrls.length > 0) {
+              const mongoose = await import("mongoose");
               await Website.collection.updateOne(
-                { _id: website._id },
+                { _id: new mongoose.default.Types.ObjectId(websiteId) },
                 { $set: { sitemaps: sitemapUrls.map((url) => ({ url, discoveredAt: new Date() })) } }
               );
               console.log(`[STEP 1] ${websiteName}: saved ${sitemapUrls.length} sitemap(s)`);
@@ -530,8 +522,41 @@ async function runAutomation() {
       await cleanupFiles(tempFiles);
     }
 
-    console.log(`[AUTOMATION] ${websiteName}: ${steps.join(" | ")}`);
-    results.push({ websiteId, name: websiteName, steps });
+  console.log(`[AUTOMATION] ${websiteName}: ${steps.join(" | ")}`);
+  results.push({ websiteId, name: websiteName, steps });
+}
+
+// ─── automation runner (runs fully in background after HTTP response) ─────────
+
+const WEBSITE_CONCURRENCY = 20;
+
+async function runAutomation() {
+  await connectDB();
+
+  const allWebsites = await Website.find({}).lean();
+  const websites    = allWebsites.filter(
+    (w) => !!(w as unknown as Record<string, unknown>).automationEnabled
+  );
+
+  if (websites.length === 0) {
+    console.log("[AUTOMATION] No automation-enabled websites.");
+    return;
+  }
+
+  const settings = await Settings.findOne({ singleton: true }).lean();
+  const results: { websiteId: string; name: string; steps: string[] }[] = [];
+
+  console.log(`[AUTOMATION] Starting — ${websites.length} websites, ${WEBSITE_CONCURRENCY} at a time`);
+
+  for (let i = 0; i < websites.length; i += WEBSITE_CONCURRENCY) {
+    const batch = websites.slice(i, i + WEBSITE_CONCURRENCY);
+    const batchNum = Math.floor(i / WEBSITE_CONCURRENCY) + 1;
+    const totalBatches = Math.ceil(websites.length / WEBSITE_CONCURRENCY);
+    console.log(`[AUTOMATION] Batch ${batchNum}/${totalBatches}: ${batch.map((w) => w.name).join(", ")}`);
+
+    await Promise.allSettled(
+      batch.map((w) => processWebsite(w as unknown as Record<string, unknown>, settings, results))
+    );
   }
 
   console.log(`\n[AUTOMATION] Done. ${results.length} website(s) processed.`);
