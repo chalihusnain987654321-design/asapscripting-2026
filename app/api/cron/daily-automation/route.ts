@@ -279,20 +279,27 @@ async function runAutomation() {
         ? `✓ Step 1: ${sitemapUrls.length} sitemap(s)`
         : "✗ Step 1: sitemap discovery failed");
 
-      // ── Step 2: URL Extraction ────────────────────────────────────────────
+      // ── Step 2: URL Extraction (only if queue is empty) ──────────────────
+      // URLs are discovered once and stay in the queue permanently.
+      // On every subsequent run this step is skipped instantly.
       const step2Start = new Date();
       let step2Output = "";
       let step2Status: "success" | "error" = "success";
       let newUrlsAdded = 0;
 
       try {
-        if (sitemapUrls.length === 0) {
+        const existingCount = await IndexingQueue.countDocuments({ websiteId });
+
+        if (existingCount > 0) {
+          step2Output = `Queue already has ${existingCount} URL(s) — skipping extraction.`;
+          console.log(`[STEP 2] ${websiteName}: skipped — ${existingCount} URLs already in queue`);
+        } else if (sitemapUrls.length === 0) {
           step2Output = "No sitemaps available — skipping URL extraction.";
           step2Status = "error";
           console.log(`[STEP 2] ${websiteName}: skipped — no sitemaps`);
         } else {
-          console.log(`[STEP 2] ${websiteName}: extracting URLs from ${sitemapUrls.length} sitemap(s)`);
-          let extractLog = `Extracting from ${sitemapUrls.length} sitemap(s) (max ${MAX_URLS_PER_WEBSITE} URLs):\n`;
+          console.log(`[STEP 2] ${websiteName}: first-time extraction from ${sitemapUrls.length} sitemap(s)`);
+          let extractLog = `First-time extraction from ${sitemapUrls.length} sitemap(s) (max ${MAX_URLS_PER_WEBSITE} URLs):\n`;
 
           for (const sitemapUrl of sitemapUrls) {
             if (newUrlsAdded >= MAX_URLS_PER_WEBSITE) break;
@@ -319,7 +326,7 @@ async function runAutomation() {
           }
 
           step2Output = `${extractLog}\n\nResult: ${newUrlsAdded} new URLs added to queue.`;
-          console.log(`[STEP 2] ${websiteName}: ${newUrlsAdded} new URLs added`);
+          console.log(`[STEP 2] ${websiteName}: ${newUrlsAdded} URLs extracted (first time)`);
         }
       } catch (err) {
         step2Output += `\nException: ${err}`;
