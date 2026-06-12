@@ -8,8 +8,9 @@ import { connectDB, Website, IndexingQueue, ExecutionLog, Settings } from "@/lib
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const MAX_URLS_PER_WEBSITE = 5000;
+const MAX_URLS_PER_WEBSITE = 100000;
 const SITEMAP_CONCURRENCY  = 8;
+const REDIRECT_CONCURRENCY = 20;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -126,6 +127,21 @@ async function extractPageUrls(
   return { urls: collected, log };
 }
 
+// Follow 301/302 redirects and return the final canonical URL
+async function resolveRedirect(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; ASAPBot/1.0)" },
+    });
+    return res.url || url;
+  } catch {
+    return url;
+  }
+}
+
 // Save one per-step execution log immediately after the step completes
 async function saveStepLog({
   scriptSlug,
@@ -210,7 +226,7 @@ async function processWebsite(
       IndexingQueue.countDocuments({ websiteId, bingStatus: "pending" }),
     ]);
 
-    const needsRefill = gscPending < 191 || bingPending < 9500;
+    const needsRefill = gscPending < 10000 || bingPending < 50000;
     console.log(`[AUTOMATION] ${websiteName}: GSC=${gscPending} Bing=${bingPending} pending | refill=${needsRefill}`);
 
     // ── Steps 1+2: Sitemap Discovery + URL Extraction (only when low) ─────
@@ -331,9 +347,9 @@ async function processWebsite(
     let step3ExitCode = 0;
 
     try {
-      if (gscPending < 191) {
-        step3Output = `Skipped — only ${gscPending} pending URLs (need ≥191 to submit).`;
-        console.log(`[STEP 3] ${websiteName}: skipped — ${gscPending} < 191 pending`);
+      if (gscPending === 0) {
+        step3Output = "No pending URLs for GSC — skipping.";
+        console.log(`[STEP 3] ${websiteName}: skipped — 0 pending`);
       } else {
         const serviceAccount = settings?.serviceAccounts.find((a) => a.name === gscAccountName);
         if (!serviceAccount) {
@@ -341,9 +357,22 @@ async function processWebsite(
           step3Status   = "error";
           step3ExitCode = 1;
         } else {
-          const gscLimit   = Math.floor(Math.random() * 10) + 191;
+          const gscLimit   = Math.min(gscPending, Math.floor(Math.random() * 10) + 191);
           const pendingGsc = await IndexingQueue.find({ websiteId, gscStatus: "pending" }).limit(gscLimit).lean();
-          console.log(`[STEP 3] ${websiteName}: submitting ${pendingGsc.length} URLs to GSC (limit ${gscLimit})`);
+          console.log(`[STEP 3] ${websiteName}: resolving redirects for ${pendingGsc.length} URLs…`);
+
+          // Resolve 301 redirects — get canonical URL for each before submitting to GSC
+          type Resolved = { q: (typeof pendingGsc)[0]; canonical: string };
+          const resolvedBatch: Resolved[] = [];
+          for (let i = 0; i < pendingGsc.length; i += REDIRECT_CONCURRENCY) {
+            const chunk = pendingGsc.slice(i, i + REDIRECT_CONCURRENCY);
+            const resolved = await Promise.all(
+              chunk.map(async (q) => ({ q, canonical: await resolveRedirect(q.url) }))
+            );
+            resolvedBatch.push(...resolved);
+          }
+          const redirected = resolvedBatch.filter((r) => r.canonical !== r.q.url).length;
+          console.log(`[STEP 3] ${websiteName}: submitting ${resolvedBatch.length} URLs to GSC (${redirected} redirects resolved)`);
 
           const saFile = join(tmpdir(), `asap_auto_sa_${websiteId}_${randomUUID()}.json`);
           const inCsv  = join(tmpdir(), `asap_auto_gsc_in_${websiteId}_${randomUUID()}.csv`);
@@ -351,7 +380,7 @@ async function processWebsite(
           tempFiles.push(saFile, inCsv, outCsv);
 
           await writeFile(saFile, serviceAccount.json);
-          await writeFile(inCsv, "url\n" + pendingGsc.map((q) => q.url).join("\n"));
+          await writeFile(inCsv, "url\n" + resolvedBatch.map((r) => r.canonical).join("\n"));
 
           const { output, exitCode } = await runScript("url_indexer.py", [
             "--service_account_file", saFile, "--csv_file", inCsv, "--output_file", outCsv,
@@ -363,17 +392,18 @@ async function processWebsite(
             const gscResults = await parseGscResultCsv(outCsv).catch(() => []);
             const resultMap  = new Map(gscResults.map((r) => [r.url, r]));
             let gscOk = 0, gscFail = 0;
-            for (const q of pendingGsc) {
-              const r = resultMap.get(q.url);
+            for (const { q, canonical } of resolvedBatch) {
+              const r = resultMap.get(canonical);
               if (r?.success) {
-                await IndexingQueue.updateOne({ _id: q._id }, { $set: { gscStatus: "submitted", gscSubmittedAt: new Date(), gscError: null } });
+                // Also update stored URL to canonical
+                await IndexingQueue.updateOne({ _id: q._id }, { $set: { url: canonical, gscStatus: "submitted", gscSubmittedAt: new Date(), gscError: null } });
                 gscOk++;
               } else {
                 await IndexingQueue.updateOne({ _id: q._id }, { $set: { gscStatus: "failed", gscError: r?.error ?? "Unknown" } });
                 gscFail++;
               }
             }
-            step3Output += `\n\nResult: ${gscOk} submitted, ${gscFail} failed (limit ${gscLimit}).`;
+            step3Output += `\n\nResult: ${gscOk} submitted, ${gscFail} failed (${redirected} redirects resolved, limit ${gscLimit}).`;
             console.log(`[STEP 3] ${websiteName}: GSC ${gscOk} ok, ${gscFail} failed`);
           } else {
             step3Status = "error";
@@ -401,11 +431,11 @@ async function processWebsite(
     let step4ExitCode = 0;
 
     try {
-      if (bingPending < 9500) {
-        step4Output = `Skipped — only ${bingPending} pending URLs (need ≥9500 to submit).`;
-        console.log(`[STEP 4] ${websiteName}: skipped — ${bingPending} < 9500 pending`);
+      if (bingPending === 0) {
+        step4Output = "No pending URLs for Bing — skipping.";
+        console.log(`[STEP 4] ${websiteName}: skipped — 0 pending`);
       } else {
-        const bingLimit   = Math.floor(Math.random() * 501) + 9500;
+        const bingLimit   = Math.min(bingPending, Math.floor(Math.random() * 501) + 9500);
         const pendingBing = await IndexingQueue.find({ websiteId, bingStatus: "pending" }).limit(bingLimit).lean();
         console.log(`[STEP 4] ${websiteName}: submitting ${pendingBing.length} URLs to Bing (limit ${bingLimit})`);
 
