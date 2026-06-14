@@ -69,12 +69,14 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
       }
-      // Always re-fetch role from DB so changes take effect without re-login
+      // Re-fetch role from DB so permission changes take effect without re-login
       if (token.id) {
-        await connectDB();
-        const fresh = await User.findById(token.id).select("role isActive").lean();
-        if (fresh) {
-          token.role = fresh.role;
+        try {
+          await connectDB();
+          const fresh = await User.findById(token.id).select("role isActive").lean();
+          if (fresh) token.role = fresh.role;
+        } catch {
+          // DB unavailable — keep existing token data, don't crash the request
         }
       }
       return token;
