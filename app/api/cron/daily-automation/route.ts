@@ -500,6 +500,11 @@ const WEBSITE_CONCURRENCY = 20;
 async function runAutomation() {
   await connectDB();
 
+  // ── Prune old execution logs (keep last 30 days) ──────────────────────────
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const { deletedCount } = await ExecutionLog.deleteMany({ startedAt: { $lt: cutoff } });
+  if (deletedCount > 0) console.log(`[AUTOMATION] Pruned ${deletedCount} execution log(s) older than 30 days`);
+
   const allWebsites = await Website.find({}).lean();
   const websites    = allWebsites.filter(
     (w) => !!(w as unknown as Record<string, unknown>).automationEnabled

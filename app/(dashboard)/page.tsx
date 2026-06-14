@@ -45,7 +45,7 @@ export default async function OverviewPage({
   await ExecutionLog.updateMany(
     { status: "running", startedAt: { $lt: staleThreshold } },
     { $set: { status: "error", completedAt: new Date(), output: "Interrupted — server was restarted during execution." } }
-  );
+  ).catch(() => { /* ignore write errors (e.g. storage limit exceeded) */ });
 
   const userFilter = await getUserFilter(role, myId);
 
