@@ -40,6 +40,8 @@ export interface ScriptConfig {
   // If true, shows a multi-select for service accounts; runs once per selected
   // account sequentially, all output in a single terminal.
   multiServiceAccount?: boolean;
+  // If set, shows an "Open Sheet" button after successful run.
+  sheetUrl?: string;
 }
 
 export const scripts: ScriptConfig[] = [
@@ -245,6 +247,7 @@ export const scripts: ScriptConfig[] = [
     icon: BarChart3,
     pythonFile: "ga4_reporter.py",
     outputLabel: "Traffic data written to Google Sheet",
+    sheetUrl: "https://docs.google.com/spreadsheets/d/1ZQk2DZ4EN-n_L-YTyn1f0sCSQL0BzmlvyYdjTwiTEi8/edit?usp=sharing",
     inputs: [
       {
         name: "start_date",

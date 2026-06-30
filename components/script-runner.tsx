@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Square, RotateCcw, Plus, Trash2, Download, ChevronDown, Search, Check } from "lucide-react";
+import { Play, Square, RotateCcw, Plus, Trash2, Download, ChevronDown, Search, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -616,6 +616,17 @@ export function ScriptRunner({ slug }: ScriptRunnerProps) {
               >
                 <Download className="h-4 w-4" />
                 Download {outputFilePath.endsWith(".txt") ? "TXT" : "CSV"}
+              </a>
+            )}
+            {status === "success" && script.sheetUrl && (
+              <a
+                href={script.sheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full h-9 rounded-md bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium transition-colors shadow-sm shadow-emerald-500/25"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open Google Sheet
               </a>
             )}
           </form>

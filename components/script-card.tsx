@@ -11,7 +11,7 @@ export function ScriptCard({ script }: ScriptCardProps) {
   const Icon = script.icon;
 
   return (
-    <div className="group flex flex-col rounded-lg border bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
+    <div className="group flex flex-col rounded-xl border bg-card p-5 shadow-sm transition-all duration-300 ease-out hover:shadow-xl hover:shadow-black/8 hover:-translate-y-1 hover:scale-[1.02]">
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">

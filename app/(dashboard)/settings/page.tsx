@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB, Settings, User, Group } from "@/lib/mongodb";
 import { SettingsClient } from "./settings-client";
+import { CleanupButton } from "./cleanup-button";
 
 export default async function SettingsPage() {
   await getServerSession(authOptions);
@@ -47,6 +48,8 @@ export default async function SettingsPage() {
         groups={groups}
         userMap={userMap}
       />
+
+      <CleanupButton />
     </div>
   );
 }
