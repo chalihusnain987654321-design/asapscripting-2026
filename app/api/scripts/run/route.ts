@@ -11,6 +11,18 @@ import { getScriptBySlug } from "@/lib/scripts-config";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes
 
+// `File` is only a global in Node.js 20+. On Node 18 (common on AWS) it is
+// undefined, so `instanceof File` throws. Use duck-typing instead.
+function isUploadedFile(value: unknown): value is File {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as File).arrayBuffer === "function" &&
+    typeof (value as File).size === "number" &&
+    (value as File).size > 0
+  );
+}
+
 function sseEvent(data: object): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
 }
@@ -57,7 +69,7 @@ async function _handle(req: Request) {
     if (inputDef.folder) {
       // Folder inputs arrive as a single pre-parsed JSON blob (client-side XML parsing)
       const value = formData.get(inputDef.name);
-      if (value instanceof File && value.size > 0) {
+      if (isUploadedFile(value)) {
         const tempPath = join(tmpdir(), `asap_${Date.now()}_${inputDef.name}.json`);
         await writeFile(tempPath, Buffer.from(await value.arrayBuffer()));
         tempFiles.push(tempPath);
@@ -65,7 +77,7 @@ async function _handle(req: Request) {
       }
     } else {
       const value = formData.get(inputDef.name);
-      if (value instanceof File && value.size > 0) {
+      if (isUploadedFile(value)) {
         const originalExt = value.name.includes(".")
           ? value.name.slice(value.name.lastIndexOf("."))
           : ".bin";
