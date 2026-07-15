@@ -5,7 +5,6 @@ Submits URLs to Google's Indexing API. Skips URLs that don't return HTTP 200.
 Logs all results to indexing_log.csv.
 """
 import argparse
-import requests
 import csv
 import time
 import os
@@ -13,15 +12,6 @@ import sys
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-
-def check_url_status(url):
-    try:
-        response = requests.head(url, timeout=10)
-        if response.status_code == 405:
-            response = requests.get(url, timeout=10)
-        return response.status_code
-    except requests.RequestException:
-        return None
 
 
 def main():
@@ -62,31 +52,25 @@ def main():
     # CSV log setup
     output_file = args.output_file
     with open(output_file, "w", newline="", encoding="utf-8") as csvfile:
-        csv.writer(csvfile).writerow(["URL", "HTTP_Status", "Result"])
+        csv.writer(csvfile).writerow(["URL", "Result"])
 
     print(f"[INFO] Starting indexing for {len(urls)} URL(s)...\n")
 
     for i, url in enumerate(urls, start=1):
-        status = check_url_status(url)
         result = ""
-
-        if status != 200:
-            result = f"Skipped (HTTP {status})"
-            print(f"[WARN] [{i}/{len(urls)}] Skipped: {url} [HTTP {status}]")
-        else:
-            try:
-                service.urlNotifications().publish(
-                    body={"url": url, "type": "URL_UPDATED"}
-                ).execute()
-                result = "Indexed Successfully"
-                print(f"[INFO] [{i}/{len(urls)}] Submitted: {url}")
-                time.sleep(2)
-            except Exception as e:
-                result = f"Error: {str(e)[:150]}"
-                print(f"[ERROR] [{i}/{len(urls)}] {url} — {str(e)[:100]}")
+        try:
+            service.urlNotifications().publish(
+                body={"url": url, "type": "URL_UPDATED"}
+            ).execute()
+            result = "Indexed Successfully"
+            print(f"[INFO] [{i}/{len(urls)}] Submitted: {url}")
+            time.sleep(2)
+        except Exception as e:
+            result = f"Error: {str(e)[:150]}"
+            print(f"[ERROR] [{i}/{len(urls)}] {url} — {str(e)[:100]}")
 
         with open(output_file, "a", newline="", encoding="utf-8") as csvfile:
-            csv.writer(csvfile).writerow([url, status, result])
+            csv.writer(csvfile).writerow([url, result])
 
     print(f"\n[DONE] Log saved to: {os.path.abspath(output_file)}")
 
